@@ -1,0 +1,34 @@
+{
+  "description": "SM 利用率 / occupancy profiling (Nsight Compute + Systems), Hopper sm_90, 78 SM",
+  "gpu": {"name": "NVIDIA Graphics Device (Hopper sm_90)", "sm_count": 78,
+          "max_threads_per_sm": 2048, "max_warps_per_sm": 64, "regs_per_sm": 65536},
+  "kernel_launch_count": {
+    "note": "nsys cuda_gpu_kern_sum: 整段 N 步 scan = 单个 ekf_mega_kernel_p launch (2 instances = warmup+real)",
+    "ekf_mega_kernel_p_instances": 2,
+    "other_kernels": "仅 RMSE 后处理的 reduce/elementwise (与 scan 无关)"
+  },
+  "v4_single_block": {
+    "grid": "(1,1,1)", "block": "(128,1,1) = 4 warps",
+    "sm__throughput_pct": 0.27,
+    "sm__warps_active_pct": 6.25,
+    "sm__maximum_warps_per_active_cycle_pct": 25,
+    "launch__waves_per_multiprocessor": 0.00,
+    "registers_per_thread": 110,
+    "occupancy_limit_registers_blocks": 4,
+    "occupancy_limit_warps_blocks": 16,
+    "interpretation": "单条轨迹只占用 1/78 个 SM (~1.3% GPU); SM 内部也只有 4/64 warp 活跃 (6.25%). 串行递归 + 微矩阵 => 计算单元几乎全空闲. 这正是单轨迹 latency-bound 的量化证据."
+  },
+  "v5_batch78": {
+    "grid": "(78,1,1)", "block": "(128,1,1)",
+    "sm__throughput_pct": 19.91,
+    "sm__warps_active_pct": 6.25,
+    "launch__waves_per_multiprocessor": 0.25,
+    "interpretation": "78 条独立轨迹 -> 78 个 block 铺满 78 个 SM. SM throughput 0.27%->19.91% (~74x), 每 SM 仍只 4 warp (单条轨迹本身无法填满 SM, 但 SM 数量被占满). occupancy_limit_registers=4 意味着每 SM 还能再塞 4 条轨迹 (4 block) => B 可继续涨到 ~312 才饱和, 与 batch_scaling 中 B=256 仍近线性吻合."
+  },
+  "key_findings": [
+    "单 block (单轨迹): SM 占用 1/78, warp 占用 4/64 => 双重未饱和, 是 latency-bound 的根因",
+    "batch 并行把'轨迹维'映射到 grid: B<=78 时每 SM 一个 block, throughput 随 B 线性增长",
+    "register 压力 110 regs/thread 限制每 SM 4 个常驻 block => 理论 occupancy 上限 25%, B~312 饱和",
+    "Mega-kernel 把 launch 数压到 1, 已无 launch overhead 可省; 进一步收益只能来自 batch 填充 SM"
+  ]
+}

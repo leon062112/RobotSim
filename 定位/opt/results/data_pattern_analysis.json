@@ -1,0 +1,54 @@
+{
+  "n_samples": 166667,
+  "dt_mean": 0.01,
+  "dt_std": 3.376461421253744e-14,
+  "dt_is_uniform": true,
+  "odom_branch": {
+    "normal_ratio_approx": 1.0,
+    "mean_|dD-dS|": 0.00011323704616374842,
+    "max_|dD-dS|": 0.0007046220252834067,
+    "note": "近似(用真值位移替代SINS位移); 实测主循环里几乎恒为 normal 分支"
+  },
+  "shapes": {
+    "state_dim": 15,
+    "obs_dim_normal": 3,
+    "obs_dim_abnormal": 2,
+    "quat_dim": 4,
+    "Cnb": "3x3",
+    "F": "15x15",
+    "P": "15x15",
+    "H_normal": "3x15",
+    "S": "3x3 (or 2x2)",
+    "K": "15x3",
+    "note": "全部为极小稠密矩阵, 最大 15x15"
+  },
+  "sparsity": {
+    "F_15x15_structural_nnz_approx": "~对角(15)+5个3x3块 → ~30%稠密, 但块状规则",
+    "H_3x15_nnz": "前6列有值, 后9列全0 → 列稀疏 (惯性误差状态不被直接观测)",
+    "P_15x15": "稠密 (协方差递推后填满)",
+    "verdict": "矩阵太小, 稀疏优化(cuSPARSE)无意义; 块结构可手工展开"
+  },
+  "ranges": {
+    "gyro_abs_max": 0.024312028221021045,
+    "accel_col_means": [
+      1.744942324964823e-05,
+      -3.304854351379718e-05,
+      9.809973280629494
+    ],
+    "odom_mean": 0.3000211872703884,
+    "odom_std": 0.020006728120545655
+  },
+  "dynamism": {
+    "shape_dynamic": false,
+    "batch_dynamic": false,
+    "batch_size": 1,
+    "note_compile_cache": "shape全程静态(单步固定) → torch.compile/CUDAGraph缓存100%命中, 无重编译; 唯一动态是异常分支shape(2vs3), 已用固定3维+R抑制消除"
+  },
+  "autotuning": {
+    "tile_size": "矩阵≤15, 单block单warp即可, tile搜索空间≈无",
+    "memory_layout": "state常驻寄存器/共享内存, 无需layout搜索",
+    "kernel_fusion": "最大价值: 531微kernel→1; 这是唯一高收益方向",
+    "compile_cache": "静态shape, 100%命中, 无需策略",
+    "verdict": "传统auto-tuning(tile/layout)空间几乎为0; 收益全在 fusion(mega-kernel) + 精度(fp64→fp32)"
+  }
+}

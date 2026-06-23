@@ -1,0 +1,368 @@
+%Version 3.1 December 2024
+% See section 11 of the User Manual for version history
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                                 %%
+%% Please do not use \input{...} to include other tex files.       %%
+%% Submit your LaTeX manuscript as one .tex document.              %%
+%%                                                                 %%
+%% All additional figures and files should be attached             %%
+%% separately and not embedded in the \TeX\ document itself.       %%
+%%                                                                 %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\documentclass[pdflatex,sn-mathphys-num]{sn-jnl}% Math and Physical Sciences Numbered Reference Style
+
+%%%% Standard Packages
+\usepackage{graphicx}%
+\usepackage{multirow}%
+\usepackage{amsmath,amssymb,amsfonts}%
+\usepackage{amsthm}%
+\usepackage{mathrsfs}%
+\usepackage[title]{appendix}%
+\usepackage{xcolor}%
+\usepackage{textcomp}%
+\usepackage{manyfoot}%
+\usepackage{booktabs}%
+\usepackage{algorithm}%
+\usepackage{algorithmicx}%
+\usepackage{algpseudocode}%
+\usepackage{listings}%
+%%%%
+
+\theoremstyle{thmstyleone}%
+\newtheorem{theorem}{Theorem}%
+\newtheorem{proposition}[theorem]{Proposition}%
+
+\theoremstyle{thmstyletwo}%
+\newtheorem{example}{Example}%
+\newtheorem{remark}{Remark}%
+
+\theoremstyle{thmstylethree}%
+\newtheorem{definition}{Definition}%
+
+\raggedbottom
+
+\begin{document}
+
+\title[High-Performance Optimization for Cased-Hole Robot Fusion Positioning Simulation]{High-Performance Optimization for Cased-Hole Robot Fusion Positioning Simulation}
+
+\author*[1]{\fnm{forename} \sur{surname}}\email{author@example.com}
+
+\affil*[1]{\orgdiv{Department}, \orgname{University}, \orgaddress{\city{City}, \state{State}, \country{China}}}
+
+\abstract{Cased-hole traction robots require precise positioning in GPS-denied, magnetically-interfered downhole environments. The SINS/dual-odometer/EKF fusion positioning simulation involves numerous sampling points with intensive sequential matrix operations, where overhead from small-matrix kernels, pipeline-level data movement, and static numerical policies becomes a bottleneck for validation and parameter tuning. This paper proposes a high-performance optimization framework from an HPC/AI-infrastructure perspective. At the kernel/operator layer, reusable matrix templates, in-place block updates, quaternion/DCM/skew-symmetric kernel fusion, and solve-based Kalman gain computation reduce the per-step EKF recursion overhead. At the runtime/pipeline layer, trajectory generation, file I/O, fusion positioning, evaluation, and visualization are decoupled into independent execution stages with CPU/GPU backend selection and stage-wise profiling. At the numerical-policy layer, innovation-driven Q/R adaptation, UD-factorized covariance propagation, and adaptive odometer gating reduce avoidable dense updates, improve matrix conditioning, and maintain long-sequence numerical stability. Preliminary experiments demonstrate clear GPU acceleration potential for vectorized trajectory generation and identify EKF recursion as the dominant end-to-end bottleneck while maintaining acceptable baseline positioning accuracy.}
+
+\keywords{Cased-hole robot, Fusion positioning, Extended Kalman filter, High-performance optimization, SINS/odometer integration, Adaptive filtering}
+
+\maketitle
+
+%% ============================================================
+%% Section 1: Introduction
+%% ============================================================
+\section{Introduction}\label{sec1}
+
+\subsection{Problem Statement}\label{subsec:problem_statement}
+
+In horizontal and extended-reach well logging operations, cased-hole traction robots must perform autonomous traversal, instrument delivery, and station-keeping in extreme downhole environments characterized by the absence of GPS signals, unreliable geomagnetic references due to metallic casing interference, high temperature and pressure, and smooth pipe walls prone to slippage.
+
+Precise, stable, and reliable positioning and pose estimation form the foundation for autonomous navigation, path planning, collision avoidance, and high-quality logging operations. Metallic casings create strong magnetic interference that renders magnetometers and compasses ineffective, while individual sensors suffer from noise, bias drift, slippage, and accumulated errors that cannot satisfy long-distance downhole positioning requirements.
+
+Consequently, multi-sensor fusion combining IMU and wheel odometers has emerged as a critical technical approach for cased-hole robot positioning. IMU provides short-term continuous motion estimation but SINS errors accumulate over time; odometers offer velocity information without drift but are susceptible to slippage. EKF-based integrated positioning achieves complementary fusion of both sensor modalities.
+
+The existing simulation system covers 500\,m long-distance trajectory generation, random obstacle perturbations (couplings, corrosion, scaling), IMU/dual-odometer data simulation, SINS mechanization, and 15-state EKF fusion positioning, with data scales reaching 166,668 sampling points. This system exhibits characteristics of long-sequence recursion, small-matrix intensive computation, and multi-stage pipeline processing.
+
+As simulation distance, sampling frequency, experiment batch count, and parameter search scale increase, runtime, memory access, matrix construction, and EKF update overhead progressively become key bottlenecks limiting algorithm validation efficiency and engineering iteration speed.
+
+\subsection{Challenges}\label{subsec:challenges}
+
+The trajectory simulation stage suffers from dynamic array expansion during obstacle generation and full-sequence traversal search for each obstacle across 166,668 points.
+
+The fusion positioning stage requires the EKF to reconstruct the complete state transition matrix at each sampling period, executing quaternion attitude updates, direction cosine matrix conversions, velocity-position recursion, odometer anomaly detection, filter prediction-update, and error compensation, with computational cost growing linearly with sampling point count.
+
+At the numerical-policy level, fixed process noise $Q$, measurement noise $R$, and anomaly detection thresholds cannot adapt to varying noise levels across different pipe segments, while long-sequence covariance propagation may accumulate numerical errors.
+
+At the runtime/pipeline level, numerical computation is coupled with visualization rendering and file I/O within the same execution path, imposing additional overhead on performance testing and batch experiments.
+
+\subsection{Contributions}\label{subsec:contributions}
+
+This paper makes the following contributions from an HPC/AI-infrastructure perspective:
+
+\begin{itemize}
+\item \textbf{Kernel/operator layer}: We optimize high-frequency small-matrix kernels in the SINS/EKF recursion through reusable matrix templates, in-place block updates, fused quaternion/DCM/skew-symmetric computations, and solve-based Kalman gain calculation instead of explicit matrix inversion. These changes reduce the kernel launch/function-call style overhead accumulated over long recursive sequences.
+
+\item \textbf{Runtime/pipeline layer}: We refactor trajectory generation, file I/O, fusion positioning, evaluation, and visualization into independent pipeline stages. The resulting execution graph supports CPU/GPU backend selection, stage-wise profiling, and batch execution, making the end-to-end simulation easier to schedule, profile, and scale.
+
+\item \textbf{Numerical-policy layer}: We redesign the EKF numerical policy to be more HPC-friendly for long recursive sequences. Innovation statistics are used to adapt Q/R and observation confidence online, UD-factorized covariance propagation replaces dense covariance updates with structured triangular/diagonal operations, and adaptive odometer gating avoids unnecessary high-dimensional updates under abnormal measurements. These policies reduce avoidable numerical work, improve conditioning and stability, and preserve baseline positioning accuracy.
+\end{itemize}
+
+%% ============================================================
+%% Section 2: Background
+%% ============================================================
+\section{Background}\label{sec2}
+
+\subsection{Cased-Hole Robot Positioning}\label{subsec:positioning_background}
+
+\subsubsection{Downhole Environment}\label{subsubsec:environment}
+
+The cased-hole robot operates within a sealed metallic pipeline where external absolute positioning information is unavailable. Motion is primarily constrained by axial advancement along the casing and radial clearance limitations. Strong magnetic interference from the metallic casing renders geomagnetic sensors inoperative. Pipe wall defects---couplings, corrosion, and scaling---introduce radial perturbations and slippage risks.
+
+The simulation adopts a casing inner diameter of 130\,mm, robot outer diameter of 80\,mm, drive wheel diameter of 15\,mm, and single-side radial clearance of 25\,mm.
+
+\subsection{Sensor and Fusion Model}\label{subsec:sensor_fusion}
+
+\subsubsection{Sensors and Coordinates}\label{subsubsec:sensors}
+
+The sensor suite comprises a three-axis gyroscope, three-axis accelerometer (IMU), and dual-path odometers. Four coordinate systems are defined: the IMU frame (coincident with the robot body frame), the odometer frame, and the navigation frame (local-level frame with x-axis along the forward direction, y-axis horizontal-right, z-axis vertical-up).
+
+\subsubsection{Fusion Model}\label{subsubsec:scheme}
+
+The positioning scheme employs SINS as the primary navigation system, dual odometers as auxiliary sensors, and EKF as the fusion framework. The fusion pipeline proceeds through: initial alignment $\rightarrow$ SINS mechanization (quaternion attitude update, velocity recursion, position recursion) $\rightarrow$ odometer assistance (dual-path averaged displacement increment) $\rightarrow$ anomaly detection (SINS vs. odometer displacement increment comparison) $\rightarrow$ EKF error estimation and compensation.
+
+The 15-dimensional error state vector comprises position errors, velocity errors, misalignment angles, gyroscope biases, and accelerometer biases:
+\begin{equation}
+\mathbf{x} = [\delta\mathbf{p}^T, \delta\mathbf{v}^T, \boldsymbol{\phi}^T, \boldsymbol{\varepsilon}^T, \nabla^T]^T \in \mathbb{R}^{15}
+\label{eq:state}
+\end{equation}
+
+The observation model switches between normal mode (3-dimensional: displacement difference + Y/Z velocity constraints) and abnormal mode (2-dimensional: radial velocity constraints).
+
+\subsection{Simulation Dataset}\label{subsec:dataset}
+
+\subsubsection{Trajectory Design}\label{subsubsec:simdesign}
+
+The simulation constructs a 500\,m trajectory at 100\,Hz sampling rate with 0.3\,m/s constant forward velocity, yielding 166,668 sampling points. Obstacles (scaling, corrosion, couplings) are randomly generated every 20--40\,m starting from 50\,m, with heights of 1--2\,mm and Gaussian-profile influence range of $\pm$0.5\,m. Differential radial perturbations are applied: couplings (positive Z), corrosion (negative Z), and scaling (Y+Z combination).
+
+\subsubsection{Noise Model}\label{subsubsec:noise}
+
+Gyroscope noise standard deviation is 0.005\,rad/s, accelerometer noise is 0.01\,m/s$^2$, and odometer noise is 0.02\,m/s. The output dataset contains 15 structured fields: timestamp, 3D position truth, 3D velocity truth, 3-axis angular velocity, 3-axis acceleration, and dual odometer velocities.
+
+\subsubsection{Baseline Accuracy}\label{subsubsec:baseline}
+
+The fusion trajectory closely matches the truth value, with radial position fluctuations within $\pm$20\,mm. Baseline accuracy metrics are summarized in Table~\ref{tab:baseline}.
+
+\begin{table}[h]
+\caption{Baseline positioning accuracy (500\,m trajectory)}\label{tab:baseline}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Metric & X-axis & Y-axis & Z-axis \\
+\midrule
+RMSE (mm) & 1017.84 & 16.83 & 8.14 \\
+Relative accuracy & 0.1755\% & --- & --- \\
+Closure error (mm) & 877.70 & --- & --- \\
+\botrule
+\end{tabular}
+\end{table}
+
+\subsection{Computational Characteristics}\label{subsec:patterns}
+
+The simulation system exhibits six characteristic computational patterns:
+
+\begin{itemize}
+\item \textbf{Vector generation}: Time series, axial trajectory, radial perturbations, and sensor noise are amenable to batch vectorized generation.
+\item \textbf{Local perturbation}: Obstacles affect only local trajectory intervals, suitable for interval-based indexing.
+\item \textbf{Conditional branching}: Obstacle type determination and normal/abnormal observation switching form branch-intensive loop structures.
+\item \textbf{Small-matrix intensive}: Quaternion updates ($4\times4$), attitude transformations ($3\times3$), and EKF covariance propagation ($15\times15$).
+\item \textbf{Sequential dependency}: Attitude, velocity, position, and EKF states depend on previous time steps, precluding simple temporal parallelization.
+\item \textbf{Visualization and I/O}: Data file read/write and plotting are suitable for decoupling from core computation.
+\end{itemize}
+
+%% ============================================================
+%% Section 3: Method
+%% ============================================================
+\section{Method}\label{sec3}
+
+\subsection{Bottleneck Analysis}\label{subsec:bottleneck_analysis}
+
+Function-level and code-segment-level timing tools are employed to quantify per-stage execution time. The EKF main loop is instrumented with segmented timing to identify the proportion of time consumed by attitude update, state transition matrix construction, covariance prediction, Kalman gain computation, and error compensation. Memory allocation patterns, dynamic array expansion frequency, and per-loop temporary variable construction overhead are analyzed.
+
+\subsubsection{Dynamic Memory Expansion and Full-Sequence Search}\label{subsubsec:bn1}
+
+The obstacle generation stage concatenates arrays incrementally, causing frequent memory reallocation. Each obstacle requires full-sequence traversal across 166,668 points to identify matching position intervals. As obstacle density increases, this overhead grows proportionally.
+
+\subsubsection{Repetitive Matrix Construction}\label{subsubsec:bn2}
+
+Each time step reconstructs the complete $15\times15$ state transition matrix $F$, including specific-force-related subblocks and attitude-related subblocks. High-frequency operations---quaternion-to-DCM conversion, quaternion multiplication, and skew-symmetric matrix construction---are invoked 4--5 times per step. Over 166,668 steps, cumulative function call overhead becomes substantial. The observation matrix $H$ is repeatedly allocated and fully assigned each step.
+
+\subsubsection{Fixed Parameters and Numerical Stability}\label{subsubsec:bn3}
+
+Fixed noise parameters $Q$ and $R$ cannot adapt to different noise levels between quiescent and obstacle-perturbed pipe segments. Standard-form covariance propagation may accumulate numerical asymmetry and positive-definiteness loss over long sequences. A fixed anomaly detection threshold may produce misjudgments under varying operating conditions.
+
+The bottlenecks above motivate a three-layer optimization framework expressed in HPC/AI-infrastructure terms: kernel/operator optimization for high-frequency EKF small-matrix computation, runtime/pipeline optimization for end-to-end execution efficiency, and numerical-policy optimization for robust long-sequence filtering.
+
+\subsection{Runtime and Pipeline Optimization}\label{subsec:trajectory_dataflow}
+
+\subsubsection{Memory Pre-allocation and Dynamic Expansion Elimination}\label{subsubsec:prealloc}
+
+For the obstacle generation stage with incremental array concatenation, a global pre-allocation strategy is established: the maximum obstacle count is estimated and storage is allocated in a single operation. Trajectory arrays and intermediate variables are uniformly pre-allocated where possible, eliminating runtime dynamic memory overhead and improving the scalability of batch trajectory simulation.
+
+\subsubsection{Index Mapping Replacing Full-Sequence Search}\label{subsubsec:indexmap}
+
+Leveraging the linear relationship of constant-velocity motion, a position-to-time-index direct mapping is established with $O(1)$ complexity:
+\begin{equation}
+\text{idx} = \text{round}\left(\frac{x_{\text{obs}}}{v_x \cdot \Delta t}\right)
+\label{eq:indexmap}
+\end{equation}
+replacing the original $O(N)$ full-sequence traversal search. Under high-density obstacle scenarios (every 2--4\,m), this demonstrates significant scalability advantages.
+
+\subsubsection{Computation-Visualization-I/O Three-Stage Decoupling}\label{subsubsec:decouple}
+
+The coupled numerical computation, plot rendering, and file read/write operations are restructured into independent modules. This supports zero-visualization-overhead execution during performance testing and provides clean computational interfaces for batch experiments and parameter sweeps. The trajectory-generation stage is further designed to support CPU/GPU runtime selection, allowing vectorized data generation to exploit GPU parallelism while keeping recursive fusion computation independently profiled.
+
+\subsection{Kernel and Operator Optimization}\label{subsec:ekf_loop}
+
+\subsubsection{State Transition Matrix Template and Incremental Update}\label{subsubsec:ftemplate}
+
+A pre-constructed $F$ template matrix is designed. At each step, only 4 attitude/angular-velocity-dependent $3\times3$ subblocks require updating:
+\begin{itemize}
+\item Velocity equation: specific-force-related subblock
+\item Velocity equation: accelerometer-bias-related subblock
+\item Attitude equation: angular-velocity-related subblock
+\item Attitude equation: gyroscope-bias-related subblock
+\end{itemize}
+This reduces matrix assignment operations by approximately 70\%.
+
+\subsubsection{Observation Matrix Dual-Template Switching}\label{subsubsec:htemplate}
+
+Fixed templates are pre-constructed for normal mode ($3\times15$ observation matrix) and abnormal mode ($2\times15$ observation matrix) respectively. At each step, only elements related to the current heading angle and quaternion components are updated, avoiding repeated allocation and full assignment of the observation matrix.
+
+\subsubsection{High-Frequency Kernel Fusion and Temporary Variable Elimination}\label{subsubsec:inline}
+
+Quaternion-to-DCM conversion is rewritten as in-place inline computation, eliminating function call overhead. Quaternion multiplication is expanded into direct formula computation. Skew-symmetric matrix construction is converted to in-place assignment. This eliminates the 4--5 function calls per step across 166,668 steps, along with associated temporary variable allocations.
+
+\subsubsection{Linear-System-Based Kalman Gain Computation}\label{subsubsec:solve_gain}
+
+Instead of explicitly computing the inverse of the innovation covariance matrix, the Kalman gain is obtained by solving the corresponding linear system. This avoids unnecessary matrix inversion in every EKF update, reduces numerical sensitivity, and is more consistent with stable small-matrix scientific computing practice.
+
+\subsection{HPC-Oriented Numerical Policy and Stable Propagation}\label{subsec:adaptive_stability}
+
+\subsubsection{Innovation-Driven Adaptive Q/R Policy}\label{subsubsec:adaptive_qr}
+
+Traditional approaches use fixed process noise $Q$ and measurement noise $R$, which cannot adapt to actual noise levels across different pipe segments. From an HPC perspective, fixed policies also waste computation by applying the same update confidence and covariance treatment to both quiescent and disturbed segments. We introduce an online adaptive mechanism based on the innovation (residual) sequence: sliding-window statistics of innovation covariance enable real-time adjustment of the Q/R ratio.
+
+This policy tightens the filter in quiescent segments and relaxes it in perturbed segments, reducing unnecessary over-correction while preserving numerical consistency. The adaptive rule is:
+\begin{equation}
+\hat{R}_k = \frac{1}{W}\sum_{i=k-W+1}^{k} \boldsymbol{\nu}_i \boldsymbol{\nu}_i^T - H_k P_k^{-} H_k^T
+\label{eq:adaptive_r}
+\end{equation}
+where $\boldsymbol{\nu}_i$ denotes the innovation at step $i$ and $W$ is the sliding window size.
+
+\subsubsection{UD Decomposition Replacing Standard Covariance Propagation}\label{subsubsec:ud}
+
+Standard-form covariance prediction $P^{-} = FPF^T + Q$ and update $P^{+} = (I-KH)P^{-}$ may accumulate numerical asymmetry and positive-definiteness loss over 166,668 recursive steps. UD decomposition (Upper-triangular + Diagonal) rewrites covariance prediction and update:
+\begin{equation}
+P = UDU^T
+\label{eq:ud}
+\end{equation}
+where $U$ is unit upper-triangular and $D$ is diagonal. This keeps covariance propagation in a structured factorized form, improves positive-definiteness and symmetry preservation, and replaces part of the dense covariance-maintenance workload with triangular/diagonal operations that are more suitable for stable small-matrix recursive computation.
+
+\subsubsection{Adaptive Odometer Gating Policy}\label{subsubsec:adaptive_threshold}
+
+Traditional approaches use a fixed threshold for anomaly detection, lacking adaptability to varying operating conditions. We introduce an adaptive gating policy based on historical displacement difference statistics (e.g., $3\sigma$ criterion). Besides improving anomaly discrimination, the gate controls whether the full odometer-assisted observation update is used or whether the filter falls back to a lower-dimensional radial-velocity constraint, avoiding unnecessary high-dimensional updates under abnormal measurements:
+\begin{equation}
+\delta_k = \mu_{\Delta s} + 3\sigma_{\Delta s}
+\label{eq:adaptive_delta}
+\end{equation}
+where $\mu_{\Delta s}$ and $\sigma_{\Delta s}$ are the running mean and standard deviation of SINS-odometer displacement differences. This enables the system to dynamically distinguish normal fluctuations from actual slippage/spinning based on real-time operating states, reducing false detection rates and selecting the cheaper valid observation path when full odometer fusion is unreliable.
+
+%% ============================================================
+%% Section 4: Experiments
+%% ============================================================
+\section{Experiments}\label{sec4}
+
+\subsection{Experimental Setup}\label{subsec:setup}
+
+Experiments are conducted on [CPU, GPU, memory, OS specifications]. The dataset comprises a 500\,m trajectory at 100\,Hz with 166,668 sampling points. At the current stage, preliminary experiments focus on CPU/GPU backend comparison for vectorized trajectory generation, pipeline-level bottleneck analysis, and baseline positioning accuracy evaluation of the migrated PyTorch implementation. Kernel/operator optimization and numerical-policy experiments are designed as subsequent ablation studies.
+
+The current PyTorch baseline positioning result is: X-axis RMSE 1017.84\,mm, Y-axis RMSE 16.83\,mm, Z-axis RMSE 8.14\,mm, with 0.1755\% relative positioning accuracy.
+
+\subsection{Runtime Evaluation}\label{subsec:runtime}
+
+The preliminary runtime evaluation is organized according to the proposed HPC/AI-infrastructure-oriented framework:
+
+\begin{itemize}
+\item \textbf{Runtime/pipeline evaluation}: PyTorch CPU/GPU backend comparison for vectorized trajectory generation at 500\,m, 1000\,m, and 5000\,m; pipeline-level timing comparison between trajectory generation with CSV output and EKF fusion positioning.
+\item \textbf{Kernel/operator evaluation}: EKF per-step timing comparison between the baseline implementation and optimized variants using F/H templates, in-place block updates, high-frequency kernel fusion, and solve-based Kalman gain computation.
+\item \textbf{Numerical-policy evaluation}: runtime, conditioning, and update-path comparison between standard dense covariance propagation/fixed gating and UD-factorized propagation/adaptive gating under long-sequence recursive filtering.
+\item \textbf{Scalability evaluation}: runtime comparison across trajectory lengths, sampling frequencies, and obstacle densities.
+\end{itemize}
+
+In the current preliminary test, PyTorch GPU accelerates vectorized trajectory generation by 11.5$\times$, 9.8$\times$, and 8.7$\times$ for 500\,m, 1000\,m, and 5000\,m trajectories, respectively. Pipeline profiling shows that trajectory generation with CSV output takes 1.63\,s for the 500\,m case, while EKF fusion positioning takes 90.11\,s, indicating that EKF recursion is the dominant end-to-end bottleneck.
+
+\subsection{Positioning Accuracy}\label{subsec:accuracy}
+
+Positioning accuracy evaluation is used to ensure that performance-oriented numerical policies do not degrade navigation quality. In addition to RMSE, the numerical-policy layer is evaluated through conditioning and update-path behavior. The evaluation includes:
+
+\begin{itemize}
+\item baseline X/Y/Z RMSE, closure error, and relative positioning accuracy of the migrated PyTorch implementation;
+\item pre/post kernel/operator optimization RMSE comparison to ensure that computational acceleration preserves numerical consistency;
+\item adaptive Q/R comparison against fixed parameters in terms of RMSE and innovation statistics;
+\item adaptive gating comparison against fixed thresholding in terms of selected observation dimension, false detection rate, and runtime impact;
+\item UD-factorized propagation comparison against standard dense covariance propagation in terms of symmetry error, positive-definiteness, conditioning, and runtime.
+\end{itemize}
+
+\subsection{Ablation Study}\label{subsec:ablation}
+
+\begin{table}[h]
+\caption{Ablation experiment configurations}\label{tab:ablation}
+\begin{tabular*}{\textwidth}{@{\extracolsep\fill}ll}
+\toprule
+Configuration & Verification Target \\
+\midrule
+Kernel/operator optimization & Speedup from F/H templates, in-place block updates, high-frequency kernel fusion, and solve-based Kalman gain computation \\
+Runtime/pipeline optimization & Speedup from pipeline decoupling, CPU/GPU trajectory generation, stage-wise profiling, and reduced I/O/visualization overhead \\
+Numerical-policy optimization & Runtime, conditioning, and stability improvement from adaptive Q/R, UD-factorized propagation, and adaptive odometer gating \\
+Kernel + pipeline optimization & Combined runtime improvement without changing filtering logic \\
+All proposed techniques & Combined performance, stability, and accuracy improvement \\
+\botrule
+\end{tabular*}
+\end{table}
+
+%% ============================================================
+%% Section 5: Related Work
+%% ============================================================
+\section{Related Work}\label{sec5}
+
+\subsection{Navigation Simulation Acceleration}
+
+Prior work on recursive computation and numerical integration optimization in robotic simulation, real-time computation requirements for multi-sensor fusion positioning simulation, and parallel computation in large-scale Monte Carlo simulation and parameter sweeps provides context for trajectory generation, pipeline decoupling, and EKF-loop acceleration.
+
+\subsection{Efficient Scientific Computing}
+
+Relevant techniques include vectorization and memory pre-allocation in numerical computing, small-matrix kernel optimization and batch matrix computation, and kernel fusion strategies for computation-intensive loops.
+
+\subsection{Adaptive and Stable Filtering}
+
+Innovation-based adaptive Kalman filtering methods, UD decomposition and square-root filters for numerical stability improvement, and adaptive thresholds in fault detection and isolation directly inform adaptive fusion and stable covariance propagation.
+
+%% ============================================================
+%% Section 6: Conclusion
+%% ============================================================
+\section{Conclusion}\label{sec6}
+
+This paper presents a high-performance optimization framework for cased-hole robot fusion positioning simulation from an HPC/AI-infrastructure perspective:
+
+\begin{itemize}
+\item At the kernel/operator layer, reusable F/H templates, in-place block updates, fused quaternion/DCM/skew-symmetric kernels, and solve-based Kalman gain computation reduce the per-step cost of large-scale EKF recursion.
+\item At the runtime/pipeline layer, trajectory generation, file I/O, fusion positioning, evaluation, and visualization are decoupled into independent stages with CPU/GPU backend support and stage-wise profiling. Preliminary results show 8.7--11.5$\times$ GPU acceleration for vectorized trajectory generation and identify EKF recursion as the dominant end-to-end bottleneck.
+\item At the numerical-policy layer, innovation-driven Q/R adaptation, UD-factorized covariance propagation, and adaptive odometer gating reduce avoidable dense updates, improve conditioning and long-sequence stability, and preserve positioning accuracy.
+\end{itemize}
+
+
+\backmatter
+
+\bmhead{Acknowledgements}
+
+[To be added.]
+
+\section*{Declarations}
+
+\begin{itemize}
+\item Funding: [To be added.]
+\item Conflict of interest: The authors declare no conflict of interest.
+\item Data availability: Simulation data and code are available upon request.
+\end{itemize}
+
+\bibliography{sn-bibliography}
+
+\end{document}
