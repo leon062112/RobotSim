@@ -1,0 +1,11 @@
+{
+  "version": "v2_cudagraph",
+  "device": "cuda",
+  "n_steps": 166667,
+  "elapsed_s": 61.720213174819946,
+  "throughput_steps_per_s": 2700.347121743171,
+  "rmse_x_mm": 1017.8383054094979,
+  "rmse_y_mm": 16.83454946692753,
+  "rmse_z_mm": 8.140964166802231,
+  "rho_pct": 0.17553972808452833
+}

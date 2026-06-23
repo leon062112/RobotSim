@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "device": "cpu",
+  "compile_mode": null,
+  "n_steps": 166667,
+  "elapsed_s": 80.1743893623352,
+  "throughput_steps_per_s": 2078.7935065745237,
+  "rmse_x_mm": 1017.838305409569,
+  "rmse_y_mm": 16.83454946692761,
+  "rmse_z_mm": 8.140964166802226,
+  "rho_pct": 0.1755397280845397
+}

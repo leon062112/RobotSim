@@ -1,0 +1,11 @@
+{
+  "version": "v3_triton_mega",
+  "device": "cuda",
+  "n_steps": 166667,
+  "elapsed_s": 11.249959468841553,
+  "throughput_steps_per_s": 14814.808929899387,
+  "rmse_x_mm": 1017.8420960557057,
+  "rmse_y_mm": 16.835871912267944,
+  "rmse_z_mm": 8.269423375886516,
+  "rho_pct": 0.17553928608436511
+}
