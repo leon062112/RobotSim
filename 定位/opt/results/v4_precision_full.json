@@ -1,0 +1,38 @@
+{
+  "fp64": {
+    "version": "v4_triton_fp64",
+    "device": "cuda",
+    "precision": "fp64",
+    "n_steps": 166667,
+    "elapsed_s": 9.751980781555176,
+    "throughput_steps_per_s": 17090.4766665692,
+    "rmse_x_mm": 1017.8420960557057,
+    "rmse_y_mm": 16.835871912267944,
+    "rmse_z_mm": 8.269423375886516,
+    "rho_pct": 0.17553928608436511
+  },
+  "fp32": {
+    "version": "v4_triton_fp32",
+    "device": "cuda",
+    "precision": "fp32",
+    "n_steps": 166667,
+    "elapsed_s": 0.6842153072357178,
+    "throughput_steps_per_s": 243587.0671665377,
+    "rmse_x_mm": 1017.7302903425434,
+    "rmse_y_mm": 16.836650607285016,
+    "rmse_z_mm": 8.269509606444533,
+    "rho_pct": 0.175747972852056
+  },
+  "tf32": {
+    "version": "v4_triton_tf32",
+    "device": "cuda",
+    "precision": "tf32",
+    "n_steps": 166667,
+    "elapsed_s": 0.7956488132476807,
+    "throughput_steps_per_s": 209471.81372608658,
+    "rmse_x_mm": 1022.5504467317938,
+    "rmse_y_mm": 17.2358016035862,
+    "rmse_z_mm": 8.576875700707584,
+    "rho_pct": 0.17627286604416761
+  }
+}

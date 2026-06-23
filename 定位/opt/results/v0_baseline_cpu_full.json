@@ -1,0 +1,11 @@
+{
+  "device": "cpu",
+  "n_steps": 166667,
+  "elapsed_s": 91.091,
+  "throughput_steps_per_s": 1830,
+  "rmse_x_mm": 1017.838305,
+  "rmse_y_mm": 16.834549,
+  "rmse_z_mm": 8.140964,
+  "rho_pct": 0.175540,
+  "note": "matches original ekf.py exactly -> correctness reference (golden)"
+}

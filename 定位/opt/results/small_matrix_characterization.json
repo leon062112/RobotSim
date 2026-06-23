@@ -1,0 +1,27 @@
+{
+  "per_step_flops_breakdown": {
+    "F@P (15x15 @ 15x15)": 6750,
+    "FP@F^T (15x15 @ 15x15)": 6750,
+    "H@P_pred (3x15 @ 15x15)": 1350,
+    "HP@H^T (3x15 @ 15x3)": 270,
+    "P_pred@H^T (15x15 @ 15x3)": 1350,
+    "PHt@Sinv (15x3 @ 3x3)": 270,
+    "K@H (15x3 @ 3x15)": 1350,
+    "(I-KH)@P_pred (15x15@15x15)": 6750,
+    "3x3 analytic inverse": 51,
+    "quat/attitude/SINS scalars": 201
+  },
+  "per_step_total_flops": 25092,
+  "per_step_global_bytes_fp32": 56,
+  "arithmetic_intensity_flop_per_byte_global": 448.1,
+  "note_state_resident": "P/q/pos/vel 常驻寄存器, 跨步零 global 往返 => 有效 AI 远高于朴素逐算子实现",
+  "largest_matrix": "15x15 (padded 16x16)",
+  "smallest": "3x3",
+  "roofline_ridge_fp32_h100_approx": 20,
+  "why_gpu_unfriendly": [
+    "矩阵维度 <=15, 单个 tl.dot 只用 1 个 warp 的一小部分 => 算力利用 <1%",
+    "卡尔曼递归严格串行 (步k依赖k-1) => 时间维零并行度",
+    "单步真实 FLOPs ~25092, 朴素实现却要 531 个 kernel launch => launch/同步开销 >> 算力",
+    "微矩阵 + 串行 => 经典 latency-bound, occupancy 天然 <=6.25%/SM (4 warp)"
+  ]
+}
