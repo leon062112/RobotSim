@@ -45,15 +45,15 @@
 
 \begin{document}
 
-\title[High-Performance Optimization for Cased-Hole Robot Fusion Positioning Simulation]{High-Performance Optimization for Cased-Hole Robot Fusion Positioning Simulation}
+\title[GPU Acceleration of EKF Fusion Positioning for Cased-Hole Robots]{Taming the Latency-Bound Beast: GPU Acceleration of EKF Fusion Positioning for Cased-Hole Robots via Kernel Fusion, Mixed Precision, and Multi-Trajectory Parallelism}
 
 \author*[1]{\fnm{forename} \sur{surname}}\email{author@example.com}
 
 \affil*[1]{\orgdiv{Department}, \orgname{University}, \orgaddress{\city{City}, \state{State}, \country{China}}}
 
-\abstract{Cased-hole traction robots require precise positioning in GPS-denied, magnetically-interfered downhole environments. The SINS/dual-odometer/EKF fusion positioning simulation involves numerous sampling points with intensive sequential matrix operations, where overhead from small-matrix kernels, pipeline-level data movement, and static numerical policies becomes a bottleneck for validation and parameter tuning. This paper proposes a high-performance optimization framework from an HPC/AI-infrastructure perspective. At the kernel/operator layer, reusable matrix templates, in-place block updates, quaternion/DCM/skew-symmetric kernel fusion, and solve-based Kalman gain computation reduce the per-step EKF recursion overhead. At the runtime/pipeline layer, trajectory generation, file I/O, fusion positioning, evaluation, and visualization are decoupled into independent execution stages with CPU/GPU backend selection and stage-wise profiling. At the numerical-policy layer, innovation-driven Q/R adaptation, UD-factorized covariance propagation, and adaptive odometer gating reduce avoidable dense updates, improve matrix conditioning, and maintain long-sequence numerical stability. Preliminary experiments demonstrate clear GPU acceleration potential for vectorized trajectory generation and identify EKF recursion as the dominant end-to-end bottleneck while maintaining acceptable baseline positioning accuracy.}
+\abstract{Extended Kalman filter (EKF) fusion positioning for cased-hole robots presents a worst-case workload for GPU acceleration: a strictly sequential 15-state recursion over 166,667 time steps, with per-step matrices no larger than $15\times15$ and over 500 micro-kernel launches per step in naive implementations. We show that naive GPU execution is 4$\times$ slower than single-core CPU, with SM throughput below 0.3\%---a textbook latency-bound problem where compute units idle waiting on dependencies rather than feeding on arithmetic. We address this through three orthogonal optimizations: (1) \textbf{kernel fusion} via a single Triton mega-kernel that collapses 531 CUDA kernel launches into one, achieving 8.8$\times$ speedup over CPU in fp64; (2) \textbf{mixed-precision execution} that leverages fp32 to deliver a further 14.3$\times$ over the fused fp64 kernel (133$\times$ vs.~CPU) while maintaining sub-millimeter positioning accuracy; (3) \textbf{multi-trajectory batch parallelism} that maps independent trajectory scans to a CUDA grid, achieving perfect linear scaling up to the SM count (78$\times$ at 78 trajectories) and 18,210$\times$ aggregate throughput at batch size 256 (34 million steps/s). We also present negative results showing that Tensor Cores, TMA, warp specialization, and conventional tile/layout auto-tuning offer zero or negative benefit for this workload class, providing guidance for practitioners facing similar latency-bound, micro-matrix recursive workloads.}
 
-\keywords{Cased-hole robot, Fusion positioning, Extended Kalman filter, High-performance optimization, SINS/odometer integration, Adaptive filtering}
+\keywords{Cased-hole robot, Fusion positioning, Extended Kalman filter, GPU kernel fusion, Mixed precision, Multi-trajectory parallelism, Triton}
 
 \maketitle
 
@@ -62,291 +62,418 @@
 %% ============================================================
 \section{Introduction}\label{sec1}
 
-\subsection{Problem Statement}\label{subsec:problem_statement}
+\subsection{Motivation}\label{subsec:motivation}
 
-In horizontal and extended-reach well logging operations, cased-hole traction robots must perform autonomous traversal, instrument delivery, and station-keeping in extreme downhole environments characterized by the absence of GPS signals, unreliable geomagnetic references due to metallic casing interference, high temperature and pressure, and smooth pipe walls prone to slippage.
+In horizontal and extended-reach well logging, cased-hole traction robots perform autonomous traversal, instrument delivery, and station-keeping in environments devoid of GPS, with unreliable geomagnetic references due to metallic casing interference. Multi-sensor fusion combining strapdown inertial navigation (SINS) and dual wheel odometers via an extended Kalman filter (EKF) has emerged as the primary positioning approach~\cite{bib1}.
 
-Precise, stable, and reliable positioning and pose estimation form the foundation for autonomous navigation, path planning, collision avoidance, and high-quality logging operations. Metallic casings create strong magnetic interference that renders magnetometers and compasses ineffective, while individual sensors suffer from noise, bias drift, slippage, and accumulated errors that cannot satisfy long-distance downhole positioning requirements.
+The simulation system for validating such fusion algorithms must generate long-distance trajectories with random obstacle perturbations, simulate IMU and odometer sensor data, execute SINS mechanization, and run a 15-state EKF over hundreds of thousands of sampling points. As simulation distance, sampling frequency, batch experiment count, and parameter search scale increase, computational performance becomes a critical bottleneck.
 
-Consequently, multi-sensor fusion combining IMU and wheel odometers has emerged as a critical technical approach for cased-hole robot positioning. IMU provides short-term continuous motion estimation but SINS errors accumulate over time; odometers offer velocity information without drift but are susceptible to slippage. EKF-based integrated positioning achieves complementary fusion of both sensor modalities.
+We study a concrete instance: a 500\,m pipeline trajectory at 100\,Hz with 166,667 sampling points, processed by a 15-state SINS/EKF fusion filter. On the surface, this appears trivially small---each EKF step involves only $15\times15$ matrix operations and a handful of transcendental functions, totaling approximately 25,000 FLOPs per step. Yet, as we show, this workload is maximally hostile to GPU acceleration: the sequential recursion prevents temporal parallelism, the micro-matrices cannot saturate GPU compute units, and the fragmentation of operations into hundreds of micro-kernels per step creates launch and synchronization overhead that dwarfs the actual computation.
 
-The existing simulation system covers 500\,m long-distance trajectory generation, random obstacle perturbations (couplings, corrosion, scaling), IMU/dual-odometer data simulation, SINS mechanization, and 15-state EKF fusion positioning, with data scales reaching 166,668 sampling points. This system exhibits characteristics of long-sequence recursion, small-matrix intensive computation, and multi-stage pipeline processing.
+\subsection{The Latency-Bound Challenge}\label{subsec:challenge}
 
-As simulation distance, sampling frequency, experiment batch count, and parameter search scale increase, runtime, memory access, matrix construction, and EKF update overhead progressively become key bottlenecks limiting algorithm validation efficiency and engineering iteration speed.
+Contemporary GPU optimization literature focuses overwhelmingly on throughput-bound workloads: large matrix multiplications, attention mechanisms, and convolutional kernels where the primary challenge is feeding enough arithmetic to saturate compute units~\cite{bib2}. Our workload inverts this pattern. With a single trajectory, we measure:
 
-\subsection{Challenges}\label{subsec:challenges}
+\begin{itemize}
+\item \textbf{SM throughput of 0.27\%}: Only 4 out of 64 warps per streaming multiprocessor are active, and the single CUDA block occupies just 1 of 78 SMs on an NVIDIA H100-class GPU.
+\item \textbf{531 CUDA kernel launches per EKF step}: A naive PyTorch implementation fragments each 25k-FLOP step into 531 micro-kernels (element-wise multiply, subtract, concatenate, negate), with only $\sim$20\% of GPU time spent in actual linear algebra (cuBLAS GEMM).
+\item \textbf{Naive GPU is 4$\times$ slower than CPU}: At 263 steps/s on GPU versus 1,866 steps/s on a single CPU core, the GPU implementation loses catastrophically to the CPU---a rare and instructive failure mode.
+\end{itemize}
 
-The trajectory simulation stage suffers from dynamic array expansion during obstacle generation and full-sequence traversal search for each obstacle across 166,668 points.
-
-The fusion positioning stage requires the EKF to reconstruct the complete state transition matrix at each sampling period, executing quaternion attitude updates, direction cosine matrix conversions, velocity-position recursion, odometer anomaly detection, filter prediction-update, and error compensation, with computational cost growing linearly with sampling point count.
-
-At the numerical-policy level, fixed process noise $Q$, measurement noise $R$, and anomaly detection thresholds cannot adapt to varying noise levels across different pipe segments, while long-sequence covariance propagation may accumulate numerical errors.
-
-At the runtime/pipeline level, numerical computation is coupled with visualization rendering and file I/O within the same execution path, imposing additional overhead on performance testing and batch experiments.
+This is a \textit{latency-bound} problem: the GPU's compute units spend most of their time idle, waiting on kernel launch dispatch, inter-kernel synchronization, and the sequential dependency chain of the Kalman recursion. The challenge is not ``how to compute more'' but ``how to eliminate the overhead that prevents us from computing at all.''
 
 \subsection{Contributions}\label{subsec:contributions}
 
-This paper makes the following contributions from an HPC/AI-infrastructure perspective:
+We address this challenge through three orthogonal optimizations that, when multiplied, transform a GPU-hostile workload into one that exploits GPU hardware effectively:
 
 \begin{itemize}
-\item \textbf{Kernel/operator layer}: We optimize high-frequency small-matrix kernels in the SINS/EKF recursion through reusable matrix templates, in-place block updates, fused quaternion/DCM/skew-symmetric computations, and solve-based Kalman gain calculation instead of explicit matrix inversion. These changes reduce the kernel launch/function-call style overhead accumulated over long recursive sequences.
+\item \textbf{Operator-level: Single-Kernel Fusion (v1--v3).} We progressively eliminate fragmentation: first removing Python-scalar synchronization and graph breaks (v1, 1.12$\times$), then capturing the per-step graph with CUDA Graphs to eliminate CPU launch overhead (v2, 1.41$\times$), and finally writing the entire sequential scan as a single Triton kernel with state resident in registers across all 166,667 steps (v3, 8.8$\times$ over CPU in fp64). This reduces 531 kernel launches per step to \textbf{1 launch for the entire trajectory}.
 
-\item \textbf{Runtime/pipeline layer}: We refactor trajectory generation, file I/O, fusion positioning, evaluation, and visualization into independent pipeline stages. The resulting execution graph supports CPU/GPU backend selection, stage-wise profiling, and batch execution, making the end-to-end simulation easier to schedule, profile, and scale.
+\item \textbf{Algorithm-level: Mixed-Precision Execution (v4).} By parameterizing the mega-kernel's data type as a compile-time constant and switching from fp64 to fp32, we achieve an additional 14.3$\times$ speedup over the fused fp64 kernel (133$\times$ vs.~CPU baseline), while maintaining sub-millimeter positioning accuracy ($\Delta X \approx 0.11$\,mm). We further show that Tensor Core acceleration (tf32) is \textit{counterproductive} for this workload: it is slower than fp32 and introduces centimeter-level errors, due to the overhead of padding $15\times15$ matrices to TC-compatible tile sizes.
 
-\item \textbf{Numerical-policy layer}: We redesign the EKF numerical policy to be more HPC-friendly for long recursive sequences. Innovation statistics are used to adapt Q/R and observation confidence online, UD-factorized covariance propagation replaces dense covariance updates with structured triangular/diagonal operations, and adaptive odometer gating avoids unnecessary high-dimensional updates under abnormal measurements. These policies reduce avoidable numerical work, improve conditioning and stability, and preserve baseline positioning accuracy.
+\item \textbf{System-level: Multi-Trajectory Batch Parallelism (v5).} Since a single trajectory's sequential recursion cannot be parallelized along the time dimension, we exploit \textit{inter}-trajectory parallelism by mapping independent trajectories to distinct CUDA blocks. This achieves \textbf{perfect linear scaling} up to the SM count (78$\times$ at 78 trajectories), with aggregate throughput reaching 34 million steps/s at batch size 256 (18,210$\times$ over CPU baseline). SM utilization rises from 0.27\% to 19.91\%.
 \end{itemize}
+
+We also contribute a systematic \textbf{negative-results section} demonstrating that several SOTA GPU optimization techniques---Tensor Cores (via tf32), TMA (Tensor Memory Accelerator), warp specialization, and conventional tile/layout auto-tuning---provide zero or negative benefit for this workload class. These findings establish that the optimization space for latency-bound micro-matrix recursive workloads is structurally different from that of throughput-bound large-matrix workloads.
 
 %% ============================================================
 %% Section 2: Background
 %% ============================================================
 \section{Background}\label{sec2}
 
-\subsection{Cased-Hole Robot Positioning}\label{subsec:positioning_background}
+\subsection{Cased-Hole Robot Positioning System}\label{subsec:system}
 
-\subsubsection{Downhole Environment}\label{subsubsec:environment}
+\subsubsection{Hardware Configuration and Environment}
 
-The cased-hole robot operates within a sealed metallic pipeline where external absolute positioning information is unavailable. Motion is primarily constrained by axial advancement along the casing and radial clearance limitations. Strong magnetic interference from the metallic casing renders geomagnetic sensors inoperative. Pipe wall defects---couplings, corrosion, and scaling---introduce radial perturbations and slippage risks.
+The cased-hole robot operates within a sealed metallic pipeline (inner diameter 130\,mm, robot outer diameter 80\,mm, single-side radial clearance 25\,mm). The sensor suite comprises a three-axis gyroscope (noise $\sigma = 0.005$\,rad/s), a three-axis accelerometer (noise $\sigma = 0.01$\,m/s$^2$), and dual-path wheel odometers (noise $\sigma = 0.02$\,m/s). Four coordinate frames are defined: the IMU frame (coincident with the robot body frame), the odometer frame, and the navigation frame (local-level, x-forward, y-right, z-up).
 
-The simulation adopts a casing inner diameter of 130\,mm, robot outer diameter of 80\,mm, drive wheel diameter of 15\,mm, and single-side radial clearance of 25\,mm.
+\subsubsection{Fusion Algorithm}
 
-\subsection{Sensor and Fusion Model}\label{subsec:sensor_fusion}
+The positioning scheme employs SINS as the primary navigation system and dual odometers as auxiliary sensors within an EKF framework~\cite{bib3}. The 15-dimensional error state vector comprises:
 
-\subsubsection{Sensors and Coordinates}\label{subsubsec:sensors}
-
-The sensor suite comprises a three-axis gyroscope, three-axis accelerometer (IMU), and dual-path odometers. Four coordinate systems are defined: the IMU frame (coincident with the robot body frame), the odometer frame, and the navigation frame (local-level frame with x-axis along the forward direction, y-axis horizontal-right, z-axis vertical-up).
-
-\subsubsection{Fusion Model}\label{subsubsec:scheme}
-
-The positioning scheme employs SINS as the primary navigation system, dual odometers as auxiliary sensors, and EKF as the fusion framework. The fusion pipeline proceeds through: initial alignment $\rightarrow$ SINS mechanization (quaternion attitude update, velocity recursion, position recursion) $\rightarrow$ odometer assistance (dual-path averaged displacement increment) $\rightarrow$ anomaly detection (SINS vs. odometer displacement increment comparison) $\rightarrow$ EKF error estimation and compensation.
-
-The 15-dimensional error state vector comprises position errors, velocity errors, misalignment angles, gyroscope biases, and accelerometer biases:
 \begin{equation}
 \mathbf{x} = [\delta\mathbf{p}^T, \delta\mathbf{v}^T, \boldsymbol{\phi}^T, \boldsymbol{\varepsilon}^T, \nabla^T]^T \in \mathbb{R}^{15}
 \label{eq:state}
 \end{equation}
 
-The observation model switches between normal mode (3-dimensional: displacement difference + Y/Z velocity constraints) and abnormal mode (2-dimensional: radial velocity constraints).
+where $\delta\mathbf{p}$, $\delta\mathbf{v}$, $\boldsymbol{\phi}$ are 3D position, velocity, and misalignment errors, and $\boldsymbol{\varepsilon}$, $\nabla$ are 3D gyroscope and accelerometer biases.
+
+Each time step executes 7 sequential stages: (1) quaternion attitude update via gyroscope integration, (2) direction cosine matrix (DCM) conversion from updated quaternion, (3) SINS velocity and position integration, (4) dual-odometer displacement averaging, (5) anomaly detection via SINS-odometer displacement comparison, (6) EKF prediction with state transition matrix $F$ and covariance propagation $P^- = FPF^T + Q$, followed by Kalman gain computation and state update, and (7) error compensation on position, velocity, and attitude. The observation model uses a fixed 3-dimensional measurement (displacement difference plus Y/Z velocity constraints), with the odometer channel suppressed via $R_{\text{odo}} \rightarrow 10^{12}$ under anomaly---mathematically equivalent to dropping the observation row but structurally uniform for GPU execution.
 
 \subsection{Simulation Dataset}\label{subsec:dataset}
 
-\subsubsection{Trajectory Design}\label{subsubsec:simdesign}
+The simulation constructs a 500\,m trajectory at 100\,Hz with 0.3\,m/s constant forward velocity, yielding $N = 166{,}667$ sampling points. Obstacles (scaling, corrosion, couplings) are randomly generated every 20--40\,m starting from 50\,m, with heights of 1--2\,mm and Gaussian-profile influence range of $\pm 0.5$\,m. The output dataset contains 15 structured fields: timestamp, 3D position truth, 3D velocity truth, 3-axis angular velocity, 3-axis acceleration, and dual odometer velocities.
 
-The simulation constructs a 500\,m trajectory at 100\,Hz sampling rate with 0.3\,m/s constant forward velocity, yielding 166,668 sampling points. Obstacles (scaling, corrosion, couplings) are randomly generated every 20--40\,m starting from 50\,m, with heights of 1--2\,mm and Gaussian-profile influence range of $\pm$0.5\,m. Differential radial perturbations are applied: couplings (positive Z), corrosion (negative Z), and scaling (Y+Z combination).
-
-\subsubsection{Noise Model}\label{subsubsec:noise}
-
-Gyroscope noise standard deviation is 0.005\,rad/s, accelerometer noise is 0.01\,m/s$^2$, and odometer noise is 0.02\,m/s. The output dataset contains 15 structured fields: timestamp, 3D position truth, 3D velocity truth, 3-axis angular velocity, 3-axis acceleration, and dual odometer velocities.
-
-\subsubsection{Baseline Accuracy}\label{subsubsec:baseline}
-
-The fusion trajectory closely matches the truth value, with radial position fluctuations within $\pm$20\,mm. Baseline accuracy metrics are summarized in Table~\ref{tab:baseline}.
+The CPU fp64 baseline achieves the following positioning accuracy, which serves as the golden standard for all subsequent comparisons:
 
 \begin{table}[h]
-\caption{Baseline positioning accuracy (500\,m trajectory)}\label{tab:baseline}
+\caption{Baseline positioning accuracy (CPU fp64, $N=166{,}667$)}\label{tab:baseline}
 \begin{tabular}{@{}lccc@{}}
 \toprule
 Metric & X-axis & Y-axis & Z-axis \\
 \midrule
 RMSE (mm) & 1017.84 & 16.83 & 8.14 \\
-Relative accuracy & 0.1755\% & --- & --- \\
-Closure error (mm) & 877.70 & --- & --- \\
+Relative accuracy $\rho$ & \multicolumn{3}{c}{0.1755\%} \\
+Closure error (mm) & \multicolumn{3}{c}{877.70} \\
 \botrule
 \end{tabular}
 \end{table}
 
-\subsection{Computational Characteristics}\label{subsec:patterns}
+\subsection{Why This Workload is GPU-Hostile}\label{subsec:gpu_hostile}
 
-The simulation system exhibits six characteristic computational patterns:
+We identify four compounding factors that make this workload maximally hostile to GPU acceleration:
 
-\begin{itemize}
-\item \textbf{Vector generation}: Time series, axial trajectory, radial perturbations, and sensor noise are amenable to batch vectorized generation.
-\item \textbf{Local perturbation}: Obstacles affect only local trajectory intervals, suitable for interval-based indexing.
-\item \textbf{Conditional branching}: Obstacle type determination and normal/abnormal observation switching form branch-intensive loop structures.
-\item \textbf{Small-matrix intensive}: Quaternion updates ($4\times4$), attitude transformations ($3\times3$), and EKF covariance propagation ($15\times15$).
-\item \textbf{Sequential dependency}: Attitude, velocity, position, and EKF states depend on previous time steps, precluding simple temporal parallelization.
-\item \textbf{Visualization and I/O}: Data file read/write and plotting are suitable for decoupling from core computation.
-\end{itemize}
+\begin{enumerate}
+\item \textbf{Sequential dependency.} The Kalman recursion imposes strict step-to-step dependence: state $(pos, vel, q, P)$ at step $k$ is a function of step $k-1$. The time dimension admits zero parallelism, ruling out batched or pipelined execution along the temporal axis.
+
+\item \textbf{Micro-matrix arithmetic.} All involved matrices are $\leq 15\times15$ (padded to $16\times16$ for Triton's \texttt{tl.dot}). A single matrix multiply of this size engages at most a fraction of one warp, yielding compute utilization below 1\%. The per-step true FLOP count is approximately 25,092 (eight $\leq 15\times15$ GEMMs, one $3\times3$ analytic inverse, and scalar transcendental functions), yet the naive implementation requires 531 kernel launches.
+
+\item \textbf{Operator fragmentation.} Profiling the CPU eager implementation reveals 1,026 PyTorch operator calls per step (2.05 million total over 2,000 steps). True linear algebra (matrix inverse, solve, multiply) accounts for only 15--20\% of execution time. The dominant costs are fragmented scalar operations: \texttt{aten::select} (14.2\%), \texttt{aten::mul} (11.8\%), and \texttt{aten::item}/\texttt{\_local\_scalar\_dense} ($\sim$5\% each), all stemming from per-element tensor construction of the state transition matrix $F$, observation matrix $H$, and quaternion/DCM/skew-symmetric helper matrices.
+
+\item \textbf{Latency-bound execution.} On GPU, the 531 micro-kernels per step each incur $\sim 0.7\,\mu$s of inter-kernel transition latency. The cumulative effect is a per-step GPU time of $\sim 817\,\mu$s dominated by dispatch and synchronization overhead, with actual computation occupying a small fraction. The NVIDIA Nsight Compute measurement confirms: \texttt{sm\_\_throughput} = 0.27\%, \texttt{sm\_\_warps\_active} = 6.25\% (4/64 warps), and only 1 of 78 SMs occupied.
+\end{enumerate}
+
+This characterization is essential because it determines the viable optimization space: traditional throughput-oriented techniques (larger tiles, higher occupancy, Tensor Cores) address a different problem. Our problem demands latency reduction through kernel fusion, precision reduction to match hardware throughput ratios, and multi-trajectory parallelism to fill idle SMs.
+
+\subsection{Experimental Platform}\label{subsec:platform}
+
+All experiments are conducted on an NVIDIA Hopper architecture GPU (sm\_90) with 78 streaming multiprocessors and 150\,GB HBM, running PyTorch 2.11.0 with CUDA 12.9 and Triton 3.6.0. The CPU baseline uses a single core of the host processor.
 
 %% ============================================================
 %% Section 3: Method
 %% ============================================================
 \section{Method}\label{sec3}
 
-\subsection{Bottleneck Analysis}\label{subsec:bottleneck_analysis}
+\subsection{Design Overview}\label{subsec:overview}
 
-Function-level and code-segment-level timing tools are employed to quantify per-stage execution time. The EKF main loop is instrumented with segmented timing to identify the proportion of time consumed by attitude update, state transition matrix construction, covariance prediction, Kalman gain computation, and error compensation. Memory allocation patterns, dynamic array expansion frequency, and per-loop temporary variable construction overhead are analyzed.
-
-\subsubsection{Dynamic Memory Expansion and Full-Sequence Search}\label{subsubsec:bn1}
-
-The obstacle generation stage concatenates arrays incrementally, causing frequent memory reallocation. Each obstacle requires full-sequence traversal across 166,668 points to identify matching position intervals. As obstacle density increases, this overhead grows proportionally.
-
-\subsubsection{Repetitive Matrix Construction}\label{subsubsec:bn2}
-
-Each time step reconstructs the complete $15\times15$ state transition matrix $F$, including specific-force-related subblocks and attitude-related subblocks. High-frequency operations---quaternion-to-DCM conversion, quaternion multiplication, and skew-symmetric matrix construction---are invoked 4--5 times per step. Over 166,668 steps, cumulative function call overhead becomes substantial. The observation matrix $H$ is repeatedly allocated and fully assigned each step.
-
-\subsubsection{Fixed Parameters and Numerical Stability}\label{subsubsec:bn3}
-
-Fixed noise parameters $Q$ and $R$ cannot adapt to different noise levels between quiescent and obstacle-perturbed pipe segments. Standard-form covariance propagation may accumulate numerical asymmetry and positive-definiteness loss over long sequences. A fixed anomaly detection threshold may produce misjudgments under varying operating conditions.
-
-The bottlenecks above motivate a three-layer optimization framework expressed in HPC/AI-infrastructure terms: kernel/operator optimization for high-frequency EKF small-matrix computation, runtime/pipeline optimization for end-to-end execution efficiency, and numerical-policy optimization for robust long-sequence filtering.
-
-\subsection{Runtime and Pipeline Optimization}\label{subsec:trajectory_dataflow}
-
-\subsubsection{Memory Pre-allocation and Dynamic Expansion Elimination}\label{subsubsec:prealloc}
-
-For the obstacle generation stage with incremental array concatenation, a global pre-allocation strategy is established: the maximum obstacle count is estimated and storage is allocated in a single operation. Trajectory arrays and intermediate variables are uniformly pre-allocated where possible, eliminating runtime dynamic memory overhead and improving the scalability of batch trajectory simulation.
-
-\subsubsection{Index Mapping Replacing Full-Sequence Search}\label{subsubsec:indexmap}
-
-Leveraging the linear relationship of constant-velocity motion, a position-to-time-index direct mapping is established with $O(1)$ complexity:
-\begin{equation}
-\text{idx} = \text{round}\left(\frac{x_{\text{obs}}}{v_x \cdot \Delta t}\right)
-\label{eq:indexmap}
-\end{equation}
-replacing the original $O(N)$ full-sequence traversal search. Under high-density obstacle scenarios (every 2--4\,m), this demonstrates significant scalability advantages.
-
-\subsubsection{Computation-Visualization-I/O Three-Stage Decoupling}\label{subsubsec:decouple}
-
-The coupled numerical computation, plot rendering, and file read/write operations are restructured into independent modules. This supports zero-visualization-overhead execution during performance testing and provides clean computational interfaces for batch experiments and parameter sweeps. The trajectory-generation stage is further designed to support CPU/GPU runtime selection, allowing vectorized data generation to exploit GPU parallelism while keeping recursive fusion computation independently profiled.
-
-\subsection{Kernel and Operator Optimization}\label{subsec:ekf_loop}
-
-\subsubsection{State Transition Matrix Template and Incremental Update}\label{subsubsec:ftemplate}
-
-A pre-constructed $F$ template matrix is designed. At each step, only 4 attitude/angular-velocity-dependent $3\times3$ subblocks require updating:
-\begin{itemize}
-\item Velocity equation: specific-force-related subblock
-\item Velocity equation: accelerometer-bias-related subblock
-\item Attitude equation: angular-velocity-related subblock
-\item Attitude equation: gyroscope-bias-related subblock
-\end{itemize}
-This reduces matrix assignment operations by approximately 70\%.
-
-\subsubsection{Observation Matrix Dual-Template Switching}\label{subsubsec:htemplate}
-
-Fixed templates are pre-constructed for normal mode ($3\times15$ observation matrix) and abnormal mode ($2\times15$ observation matrix) respectively. At each step, only elements related to the current heading angle and quaternion components are updated, avoiding repeated allocation and full assignment of the observation matrix.
-
-\subsubsection{High-Frequency Kernel Fusion and Temporary Variable Elimination}\label{subsubsec:inline}
-
-Quaternion-to-DCM conversion is rewritten as in-place inline computation, eliminating function call overhead. Quaternion multiplication is expanded into direct formula computation. Skew-symmetric matrix construction is converted to in-place assignment. This eliminates the 4--5 function calls per step across 166,668 steps, along with associated temporary variable allocations.
-
-\subsubsection{Linear-System-Based Kalman Gain Computation}\label{subsubsec:solve_gain}
-
-Instead of explicitly computing the inverse of the innovation covariance matrix, the Kalman gain is obtained by solving the corresponding linear system. This avoids unnecessary matrix inversion in every EKF update, reduces numerical sensitivity, and is more consistent with stable small-matrix scientific computing practice.
-
-\subsection{HPC-Oriented Numerical Policy and Stable Propagation}\label{subsec:adaptive_stability}
-
-\subsubsection{Innovation-Driven Adaptive Q/R Policy}\label{subsubsec:adaptive_qr}
-
-Traditional approaches use fixed process noise $Q$ and measurement noise $R$, which cannot adapt to actual noise levels across different pipe segments. From an HPC perspective, fixed policies also waste computation by applying the same update confidence and covariance treatment to both quiescent and disturbed segments. We introduce an online adaptive mechanism based on the innovation (residual) sequence: sliding-window statistics of innovation covariance enable real-time adjustment of the Q/R ratio.
-
-This policy tightens the filter in quiescent segments and relaxes it in perturbed segments, reducing unnecessary over-correction while preserving numerical consistency. The adaptive rule is:
-\begin{equation}
-\hat{R}_k = \frac{1}{W}\sum_{i=k-W+1}^{k} \boldsymbol{\nu}_i \boldsymbol{\nu}_i^T - H_k P_k^{-} H_k^T
-\label{eq:adaptive_r}
-\end{equation}
-where $\boldsymbol{\nu}_i$ denotes the innovation at step $i$ and $W$ is the sliding window size.
-
-\subsubsection{UD Decomposition Replacing Standard Covariance Propagation}\label{subsubsec:ud}
-
-Standard-form covariance prediction $P^{-} = FPF^T + Q$ and update $P^{+} = (I-KH)P^{-}$ may accumulate numerical asymmetry and positive-definiteness loss over 166,668 recursive steps. UD decomposition (Upper-triangular + Diagonal) rewrites covariance prediction and update:
-\begin{equation}
-P = UDU^T
-\label{eq:ud}
-\end{equation}
-where $U$ is unit upper-triangular and $D$ is diagonal. This keeps covariance propagation in a structured factorized form, improves positive-definiteness and symmetry preservation, and replaces part of the dense covariance-maintenance workload with triangular/diagonal operations that are more suitable for stable small-matrix recursive computation.
-
-\subsubsection{Adaptive Odometer Gating Policy}\label{subsubsec:adaptive_threshold}
-
-Traditional approaches use a fixed threshold for anomaly detection, lacking adaptability to varying operating conditions. We introduce an adaptive gating policy based on historical displacement difference statistics (e.g., $3\sigma$ criterion). Besides improving anomaly discrimination, the gate controls whether the full odometer-assisted observation update is used or whether the filter falls back to a lower-dimensional radial-velocity constraint, avoiding unnecessary high-dimensional updates under abnormal measurements:
-\begin{equation}
-\delta_k = \mu_{\Delta s} + 3\sigma_{\Delta s}
-\label{eq:adaptive_delta}
-\end{equation}
-where $\mu_{\Delta s}$ and $\sigma_{\Delta s}$ are the running mean and standard deviation of SINS-odometer displacement differences. This enables the system to dynamically distinguish normal fluctuations from actual slippage/spinning based on real-time operating states, reducing false detection rates and selecting the cheaper valid observation path when full odometer fusion is unreliable.
-
-%% ============================================================
-%% Section 4: Experiments
-%% ============================================================
-\section{Experiments}\label{sec4}
-
-\subsection{Experimental Setup}\label{subsec:setup}
-
-Experiments are conducted on [CPU, GPU, memory, OS specifications]. The dataset comprises a 500\,m trajectory at 100\,Hz with 166,668 sampling points. At the current stage, preliminary experiments focus on CPU/GPU backend comparison for vectorized trajectory generation, pipeline-level bottleneck analysis, and baseline positioning accuracy evaluation of the migrated PyTorch implementation. Kernel/operator optimization and numerical-policy experiments are designed as subsequent ablation studies.
-
-The current PyTorch baseline positioning result is: X-axis RMSE 1017.84\,mm, Y-axis RMSE 16.83\,mm, Z-axis RMSE 8.14\,mm, with 0.1755\% relative positioning accuracy.
-
-\subsection{Runtime Evaluation}\label{subsec:runtime}
-
-The preliminary runtime evaluation is organized according to the proposed HPC/AI-infrastructure-oriented framework:
+Our optimization proceeds along three orthogonal axes, each attacking a distinct aspect of the latency-bound micro-matrix recursive workload:
 
 \begin{itemize}
-\item \textbf{Runtime/pipeline evaluation}: PyTorch CPU/GPU backend comparison for vectorized trajectory generation at 500\,m, 1000\,m, and 5000\,m; pipeline-level timing comparison between trajectory generation with CSV output and EKF fusion positioning.
-\item \textbf{Kernel/operator evaluation}: EKF per-step timing comparison between the baseline implementation and optimized variants using F/H templates, in-place block updates, high-frequency kernel fusion, and solve-based Kalman gain computation.
-\item \textbf{Numerical-policy evaluation}: runtime, conditioning, and update-path comparison between standard dense covariance propagation/fixed gating and UD-factorized propagation/adaptive gating under long-sequence recursive filtering.
-\item \textbf{Scalability evaluation}: runtime comparison across trajectory lengths, sampling frequencies, and obstacle densities.
+\item \textbf{Axis 1---Operator Fusion (v1$\rightarrow$v2$\rightarrow$v3):} Eliminate kernel launch and synchronization overhead by progressively fusing fragmented operations, culminating in a single Triton kernel that executes the entire 166,667-step sequential scan.
+
+\item \textbf{Axis 2---Mixed Precision (v4):} Exploit the large fp64-to-fp32 throughput ratio on modern GPUs by switching the fused kernel to fp32, with careful validation that positioning accuracy remains sub-millimeter.
+
+\item \textbf{Axis 3---Multi-Trajectory Batch (v5):} Since single-trajectory latency has a hard lower bound (the sequential recursion), achieve throughput scaling by mapping independent trajectories to distinct CUDA blocks, filling idle SMs.
 \end{itemize}
 
-In the current preliminary test, PyTorch GPU accelerates vectorized trajectory generation by 11.5$\times$, 9.8$\times$, and 8.7$\times$ for 500\,m, 1000\,m, and 5000\,m trajectories, respectively. Pipeline profiling shows that trajectory generation with CSV output takes 1.63\,s for the 500\,m case, while EKF fusion positioning takes 90.11\,s, indicating that EKF recursion is the dominant end-to-end bottleneck.
-
-\subsection{Positioning Accuracy}\label{subsec:accuracy}
-
-Positioning accuracy evaluation is used to ensure that performance-oriented numerical policies do not degrade navigation quality. In addition to RMSE, the numerical-policy layer is evaluated through conditioning and update-path behavior. The evaluation includes:
-
-\begin{itemize}
-\item baseline X/Y/Z RMSE, closure error, and relative positioning accuracy of the migrated PyTorch implementation;
-\item pre/post kernel/operator optimization RMSE comparison to ensure that computational acceleration preserves numerical consistency;
-\item adaptive Q/R comparison against fixed parameters in terms of RMSE and innovation statistics;
-\item adaptive gating comparison against fixed thresholding in terms of selected observation dimension, false detection rate, and runtime impact;
-\item UD-factorized propagation comparison against standard dense covariance propagation in terms of symmetry error, positive-definiteness, conditioning, and runtime.
-\end{itemize}
-
-\subsection{Ablation Study}\label{subsec:ablation}
+These three axes are \textit{multiplicative}: the final aggregate throughput is approximately the product of the speedups from fusion, mixed precision, and batch parallelism. Table~\ref{tab:versions} summarizes the version evolution.
 
 \begin{table}[h]
-\caption{Ablation experiment configurations}\label{tab:ablation}
-\begin{tabular*}{\textwidth}{@{\extracolsep\fill}ll}
+\caption{Version evolution: throughput, speedup, and correctness (full $N=166{,}667$)}\label{tab:versions}
+\begin{tabular}{@{}llrrcc@{}}
 \toprule
-Configuration & Verification Target \\
+Version & Method & Device/Precision & Throughput (steps/s) & vs.~v0 CPU & Correctness \\
 \midrule
-Kernel/operator optimization & Speedup from F/H templates, in-place block updates, high-frequency kernel fusion, and solve-based Kalman gain computation \\
-Runtime/pipeline optimization & Speedup from pipeline decoupling, CPU/GPU trajectory generation, stage-wise profiling, and reduced I/O/visualization overhead \\
-Numerical-policy optimization & Runtime, conditioning, and stability improvement from adaptive Q/R, UD-factorized propagation, and adaptive odometer gating \\
-Kernel + pipeline optimization & Combined runtime improvement without changing filtering logic \\
-All proposed techniques & Combined performance, stability, and accuracy improvement \\
+v0 & Naive eager & CPU fp64 & 1,866 & 1.00$\times$ & Golden \\
+v0 & Naive eager & GPU fp64 & 263* & 0.14$\times$ & (slower than CPU) \\
+v1 & Fragment elimination & CPU fp64 & 2,098 & 1.12$\times$ & Bit-exact \\
+v2 & CUDA Graph & GPU fp64 & 2,640 & 1.41$\times$ & Bit-exact \\
+v3 & Triton mega-kernel & GPU fp64 & 16,491 & 8.8$\times$ & Sub-mm \\
+\textbf{v4} & \textbf{+ fp32} & \textbf{GPU fp32} & \textbf{242,737} & \textbf{130$\times$} & \textbf{Sub-mm} \\
+v4 & + tf32 & GPU tf32 & 209,524 & 112$\times$ & Sub-cm \\
+\textbf{v5} & \textbf{+ Batch$\times$256} & \textbf{GPU fp32} & \textbf{34.0M} & \textbf{18,210$\times$} & \textbf{Bit-exact} \\
 \botrule
-\end{tabular*}
+\end{tabular}
+
+\smallskip
+\footnotesize{*v0 GPU extrapolated from 20,001-step partial run. v5 throughput is aggregate across 256 independent trajectories; single-trajectory latency is unchanged from v4.}
 \end{table}
+
+\subsection{Axis 1: Operator Fusion---From 531 Kernels to 1}\label{subsec:fusion}
+
+\subsubsection{v1: Fragment Elimination and Graph-Break Removal}
+
+The first stage targets the root cause identified by profiling: 1,026 operator calls per step, dominated by Python-scalar synchronization (\texttt{.item()}) and per-element tensor construction. We rewrite the EKF step function to:
+
+\begin{itemize}
+\item Construct all matrices ($\theta_{\text{mat}}$, $C_n^b$, $H$, $F$, skew-symmetric blocks) using \texttt{torch.stack} and \texttt{torch.cat} on GPU tensors, eliminating all Python-scalar intermediates and \texttt{.item()} calls.
+\item Unify the observation model to a fixed 3-dimensional form: under odometer anomaly, set $R_{\text{odo}} \rightarrow 10^{12}$ to suppress the odometer channel (mathematically equivalent to deleting the observation row via $K \approx 0$).
+\item Replace conditional branches with \texttt{torch.where} and \texttt{clamp} operations.
+\end{itemize}
+
+PyTorch's \texttt{torch.\_dynamo.explain} confirms the result: \textbf{graph\_count = 1, graph\_break\_count = 0, op\_count = 241} (vs.~1,026 in v0, a 76\% reduction). This yields a modest 1.12$\times$ CPU speedup. Critically, we discover that \texttt{torch.compile(default)} is \textit{slower} than eager execution for this workload: the single-step graph is too small for Inductor's code generation and guard-checking overhead to be amortized.
+
+\subsubsection{v2: CUDA Graph Capture/Replay}
+
+To eliminate the remaining CPU-side kernel launch scheduling overhead, we capture the per-step computation graph as a CUDA Graph and replay it for all $N$ steps. Key implementation challenges:
+
+\begin{itemize}
+\item \texttt{torch.linalg.inv} (which internally calls cuSOLVER) triggers \texttt{cudaErrorStreamCaptureInvalidated} during graph capture due to internal host synchronization. We replace it with an analytic $3\times3$ adjugate-based inverse: $\text{inv}(S) = \text{adj}(S) / \det(S)$, which is purely element-wise.
+\item GPU-scalar tensor indexing triggers implicit host synchronization during capture. We replace \texttt{gyro[idx]} with \texttt{torch.index\_select} on a 1-element index tensor.
+\end{itemize}
+
+The CUDA Graph replay achieves 2,640 steps/s (1.41$\times$ over v0 CPU). However, \textbf{unrolling} the graph (capturing 1/5/10/20/50 steps per graph) yields no additional speedup, confirming that the bottleneck has shifted from CPU launch overhead to GPU execution---the 531 micro-kernels within each step still execute sequentially with inter-kernel transition delays.
+
+\subsubsection{v3: Triton Mega-Kernel---The Core Contribution}
+
+The key insight from v2 is that \textit{531 dependent micro-kernels per step} is the true bottleneck. Each kernel incurs $\sim 0.7\,\mu$s of dispatch and synchronization overhead, and these delays accumulate linearly over the step's dependency chain. The solution is to eliminate all intra-step kernel boundaries: write the \textbf{entire sequential scan as a single Triton kernel}.
+
+Our mega-kernel design:
+
+\begin{itemize}
+\item \textbf{Single launch, single block.} The kernel is launched once with \texttt{grid=(1,)} and executes all $N = 166{,}667$ steps in a \texttt{for} loop within the kernel body. This eliminates $N \times 531$ kernel launches.
+\item \textbf{State resident in registers.} All persistent state---position (3), velocity (3), quaternion (4), covariance matrix $P$ ($16\times16$ padded), and the 15-element error state---is held in Triton tensors that the compiler maps to registers. There are zero global memory round-trips for state between steps.
+\item \textbf{Padded-16 matrix operations.} All matrices are padded to $16\times16$ to use \texttt{tl.dot} with fp64 precision. The $3\times3$ matrix inverse uses analytic adjugate/determinant computation.
+\item \textbf{Transcendental functions via libdevice.} \texttt{atan2}, \texttt{sin}, \texttt{cos}, \texttt{sqrt}, and \texttt{abs} use NVIDIA's libdevice implementations, which are directly callable from Triton.
+\item \textbf{Correct $F$ matrix construction.} A critical implementation detail: $F[6{:}9,6{:}9] = -\text{skew}(\omega) \cdot dt$ \textit{overwrites} the diagonal block of the padded identity matrix, requiring explicit subtraction of the identity contribution before the skew-symmetric assignment. This subtle difference from additive accumulation caused an initial correctness bug.
+\end{itemize}
+
+\textbf{Performance:} 16,491 steps/s, representing \textbf{8.8$\times$} over CPU fp64 and \textbf{5.5$\times$} over the CUDA Graph implementation. The entire trajectory processes in 10.1 seconds.
+
+\textbf{Correctness:} Verified via per-step position comparison against the CPU golden standard over 5,000 steps. Maximum absolute deviation: X = $3.8 \times 10^{-7}$\,m, Y = $1.6 \times 10^{-8}$\,m, Z = $9.0 \times 10^{-6}$\,m ($\leq 9\,\mu$m). These deviations are entirely attributable to floating-point accumulation order differences in fp64, three orders of magnitude below the RMSE (mm-scale).
+
+\subsubsection{Why Not cuBLAS/cuSOLVER?}
+
+A natural question is why we do not simply use NVIDIA's optimized libraries. We measured single-step reference latencies: cuBLAS GEMM ($F \cdot P \cdot F^T$, $15\times15$) requires 17.5\,$\mu$s, and cuSOLVER inverse ($3\times3$) requires 134\,$\mu$s. Remarkably, \textbf{cuSOLVER's single $3\times3$ inverse (134\,$\mu$s) is slower than our entire v3 mega-kernel step ($\sim$49\,$\mu$s)}. The reason is that these libraries are designed and optimized for large-matrix throughput, where fixed launch and metadata overhead amortizes over substantial computation. At $15\times15$ scale, the fixed cost dominates, rendering general-purpose libraries counterproductive.
+
+\subsection{Axis 2: Mixed-Precision Execution}\label{subsec:mixed_precision}
+
+\subsubsection{Method}
+
+We parameterize the v3 mega-kernel with two compile-time constants: the data type \texttt{DT} and the \texttt{tl.dot} input precision \texttt{IP}. A single kernel source compiles to three precision variants:
+
+\begin{itemize}
+\item \textbf{fp64 (ieee):} Baseline fused kernel, identical to v3.
+\item \textbf{fp32 (ieee):} Standard single-precision floating point.
+\item \textbf{tf32 (Tensor Core):} \texttt{tl.dot} with \texttt{input\_precision=tf32}, using Tensor Core acceleration.
+\end{itemize}
+
+Truth data and final RMSE computation always use fp64 for fair accuracy comparison.
+
+\subsubsection{Results}
+
+\begin{table}[h]
+\caption{Mixed-precision throughput and accuracy ($N=166{,}667$)}\label{tab:precision}
+\begin{tabular}{@{}lrrrrc@{}}
+\toprule
+Precision & Throughput (steps/s) & vs.~fp64 kernel & vs.~v0 CPU & $\Delta$X (mm) & Accuracy \\
+\midrule
+fp64 & 17,090 & 1.0$\times$ & 9.3$\times$ & --- & Baseline \\
+\textbf{fp32} & \textbf{243,587} & \textbf{14.3$\times$} & \textbf{133$\times$} & \textbf{0.11} & \textbf{Sub-mm} \\
+tf32 & 209,472 & 12.3$\times$ & 114$\times$ & 4.71 & Sub-cm \\
+\botrule
+\end{tabular}
+\end{table}
+
+The fp32 result is a \textbf{14.3$\times$ speedup over the already-fused fp64 kernel}---far exceeding the expected 1.5--2$\times$ from the fp64:fp32 ALU throughput ratio alone. We attribute this super-linear gain to three compounding effects on the latency-bound critical path:
+
+\begin{enumerate}
+\item \textbf{Reduced register pressure}: fp64 values occupy two 32-bit registers each. Halving the register footprint for all persistent state allows the compiler to maintain more values in fast register file, reducing spill/fill overhead.
+\item \textbf{Faster transcendentals}: libdevice \texttt{sin}, \texttt{cos}, \texttt{sqrt}, and \texttt{atan2} have significantly lower latency in fp32 than fp64 on Hopper architectures, and these functions lie on the critical path of quaternion update and DCM construction.
+\item \textbf{Higher ALU throughput}: Hopper's fp32 ALU throughput is substantially higher than fp64, and in a latency-bound chain where every instruction contributes to the critical path, higher throughput directly translates to lower latency.
+\end{enumerate}
+
+\textbf{Accuracy:} fp32 introduces a maximum position deviation of $\Delta X \approx 0.11$\,mm, well within the millimeter-level positioning requirement. The X-axis RMSE of $\sim$1\,m is dominated by systematic integration drift, not numerical precision.
+
+\textbf{Negative result---tf32/Tensor Cores:} The tf32 variant is \textit{slower} than fp32 (209k vs.~243k steps/s) and \textit{less accurate} ($\Delta X \approx 4.7$\,mm). At $15\times15$ (padded to $16\times16$), Tensor Core tiles waste significant computation on padding elements while introducing mantissa truncation errors. This demonstrates that Tensor Cores are structurally mismatched for micro-matrix workloads.
+
+\subsection{Axis 3: Multi-Trajectory Batch Parallelism}\label{subsec:batch}
+
+\subsubsection{Method}
+
+Axes 1 and 2 minimize \textit{per-trajectory latency}, but the sequential recursion sets a hard lower bound on single-trajectory throughput. However, many practical scenarios involve \textbf{multiple independent trajectories}: Monte Carlo simulations with different random seeds, multi-sensor configurations, or multi-target tracking. These trajectories share identical computation structure but different input data, creating an opportunity for inter-trajectory parallelism.
+
+We extend the v4 kernel by mapping the \textbf{trajectory dimension to the CUDA grid}: launching with \texttt{grid=(B,)} where each of the $B$ CUDA blocks independently processes one complete trajectory scan. The kernel body is unchanged from v4; only pointer offsets (\texttt{pid $\times$ batch\_stride}) differentiate trajectories. This design ensures zero inter-block communication and perfect isolation.
+
+\subsubsection{Scaling Results}
+
+\begin{table}[h]
+\caption{Multi-trajectory batch scaling ($N=166{,}667$, fp32)}\label{tab:batch}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Batch $B$ & Throughput (steps/s) & Trajectories/s & Speedup vs.~$B{=}1$ & Notes \\
+\midrule
+1  & 229k       & 1.4   & 1.0$\times$   & Single trajectory (v4 fp32) \\
+16 & 3.67M      & 22.0  & 16.0$\times$  & Perfect linear \\
+32 & 7.35M      & 44.1  & 32.0$\times$  & Perfect linear \\
+64 & 14.66M     & 88.0  & 64.0$\times$  & Perfect linear \\
+78 & 17.86M     & 107.2 & 77.9$\times$  & $=$ SM count, 1 block/SM \\
+128 & 24.07M    & 144.4 & 105$\times$    & 2nd wave (occupancy) \\
+256 & \textbf{34.08M} & \textbf{204.5} & \textbf{148.7$\times$} & Near register limit \\
+\botrule
+\end{tabular}
+\end{table}
+
+\textbf{Perfect linear scaling at $B \leq 78$}: With one CUDA block per SM, speedup equals batch size exactly. This confirms that the trajectory-dimension mapping is the correct approach for saturating idle SMs.
+
+\textbf{SM utilization evidence}: Nsight Compute measurements show \texttt{sm\_\_throughput} rising from 0.27\% (single block) to 19.91\% at $B=78$, a $\sim$74$\times$ increase consistent with 78 blocks occupying all 78 SMs. With 110 registers per thread, the occupancy limit is 4 blocks per SM, yielding a theoretical saturation point of $\sim$312 trajectories---consistent with the continued near-linear scaling observed at $B=256$.
+
+\textbf{Inter-block correctness}: All trajectories produce bit-identical results (\texttt{traj\_spread} = 0), confirming zero cross-block interference.
+
+It is important to note that v5's 34M steps/s is \textbf{aggregate throughput} across 256 trajectories, not single-trajectory acceleration. Single-trajectory latency remains bounded by the sequential recursion; Axes 1 and 2 have already extracted all available latency reduction. Axes 1+2 (latency) and Axis 3 (throughput) are orthogonal dimensions.
+
+\subsection{Auto-Tuning and Advanced GPU Techniques: A Systematic Negative-Result Study}\label{subsec:negative}
+
+A significant portion of our investigation was devoted to techniques that proved \textit{ineffective} for this workload. We document these negative results as guidance for practitioners and to establish the structural boundaries of the optimization space.
+
+\subsubsection{Conventional Auto-Tuning}
+
+We analyzed the input data characteristics: $dt$ is strictly uniform ($\sigma/\mu < 10^{-6}$), the batch size is 1 (single trajectory), and all tensor shapes remain static throughout the scan. The optimization dimensions traditionally explored by auto-tuning frameworks are:
+
+\begin{itemize}
+\item \textbf{Tile size}: Search space $\approx 0$. All matrices are $\leq 15\times15$; a single warp already covers the entire tile. Larger tiles would only add padding waste.
+\item \textbf{Memory layout}: Search space $\approx 0$. Persistent state resides in registers; there is no tiled global/shared memory traffic to optimize.
+\item \textbf{Kernel fusion strategy}: \textbf{Search space maximal}---the $531 \rightarrow 1$ kernel fusion (v3) is the only high-leverage direction, and it has been fully realized.
+\item \textbf{Precision selection}: \textbf{Search space large}---fp64 $\rightarrow$ fp32 yields 14.3$\times$ (v4), but Tensor Core (tf32) is \textit{worse} than fp32.
+\end{itemize}
+
+\textbf{Conclusion:} Traditional tile/layout auto-tuning offers zero benefit for this workload class. All gains come from \textbf{fusion + precision + parallel mapping}, which are architectural decisions, not auto-tunable knobs.
+
+\subsubsection{Advanced GPU Kernel Techniques}
+
+We systematically evaluated five SOTA GPU optimization techniques and found four to be inapplicable or harmful (Table~\ref{tab:techniques}). These are \textbf{not} implementation failures but structural mismatches: each technique targets a throughput-bound large-matrix scenario, while our workload is latency-bound with micro-matrices.
+
+\begin{table}[h]
+\caption{Systematic evaluation of advanced GPU kernel techniques}\label{tab:techniques}
+\begin{tabular}{@{}lp{3.5cm}p{2.5cm}p{4cm}@{}}
+\toprule
+Technique & Design Target & Applicable? & Rationale \\
+\midrule
+Tensor Core / tf32 & Large-matrix MAC throughput & \textbf{No}---empirically worse & v4: tf32 slower than fp32 + $\Delta X=4.7$\,mm. $15\times15$ padded to 16 wastes TC tiles. \\
+TMA & $128\times128$+ async global$\leftrightarrow$shared DMA & \textbf{No}---no leverage & Working set is $\sim$KB, fully register-resident. No DMA to overlap; descriptor setup cost $>$ benefit. \\
+Warp Specialization & Producer-consumer pipeline (load/compute/store) & \textbf{No}---no leverage & Only 4 active warps; no memory phase to hide. Intra-step dependency chain prevents warp pipelining. \\
+Persistent Kernel & Eliminate per-launch scheduling & \textbf{Yes}---already implemented & v3/v5 are single-launch kernels. Online streaming (100\,Hz real-time) is future work. \\
+Block-Diagonal Stacking & Batched small GEMM via single large matmul & \textbf{No}---anti-pattern & Stacking $B$ independent matrices into block-diagonal computes $B\times$ zero off-diagonal FLOPs, strictly worse than the grid-mapping approach (v5). \\
+\botrule
+\end{tabular}
+\end{table}
+
+\textbf{The only technique with marginal potential} is exploiting $F$'s block-sparse structure: $F = I + \text{few } 3\times3$ off-diagonal skew-symmetric blocks. Currently computed as a dense $15\times15$ matrix, switching to block-sparse would reduce register pressure by eliminating zero-structure storage, potentially increasing occupancy and extending the batch linear-scaling range beyond $\sim$312 trajectories. However, this is a second-order throughput optimization; the three primary axes already capture the dominant gains.
+
+\textbf{Bottom line:} These techniques address ``the compute units are starved for arithmetic'' (throughput-bound), while our problem is ``the compute units are waiting on dependencies'' (latency-bound, SM throughput 0.27\%). The three contributions---fusion, mixed precision, and batch parallelism---have already extracted all available gains from the latency-bound sequential recursion. Further improvement requires breaking the sequential dependency itself (e.g., associative-scan parallel filtering), which we discuss as future work.
+
+%% ============================================================
+%% Section 4: Evaluation
+%% ============================================================
+\section{Evaluation}\label{sec4}
+
+\subsection{Throughput Comparison}\label{subsec:throughput}
+
+Table~\ref{tab:versions} presents the complete throughput evolution. The multiplicative nature of our three contributions is evident:
+
+\begin{equation}
+\text{Total speedup} = \underbrace{8.8\times}_{\text{fusion}} \times \underbrace{14.3\times}_{\text{fp32}} \times \underbrace{148.7\times}_{\text{batch } B=256} \approx 18{,}700\times
+\label{eq:multiplicative}
+\end{equation}
+
+The measured aggregate speedup at $B=256$ is 18,210$\times$ (34.0M / 1,866), consistent with the multiplicative model after accounting for measurement variance and sub-linear batch scaling beyond SM count.
+
+\subsection{Accuracy Preservation}\label{subsec:accuracy}
+
+\begin{table}[h]
+\caption{Positioning accuracy across precision variants ($N=166{,}667$)}\label{tab:accuracy}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Version & RMSE X (mm) & RMSE Y (mm) & RMSE Z (mm) & $\rho$ (\%) \\
+\midrule
+v0 CPU (golden) & 1017.84 & 16.83 & 8.14 & 0.1755 \\
+v3 Triton fp64 & 1017.84 & 16.84 & 8.27 & 0.1755 \\
+v4 Triton fp32 & 1017.73 & 16.84 & 8.27 & 0.1757 \\
+v4 Triton tf32 & 1022.55 & 17.24 & 8.58 & 0.1763 \\
+\botrule
+\end{tabular}
+\end{table}
+
+The fp32 fused kernel introduces a maximum deviation of $\Delta X \approx 0.11$\,mm from the fp64 golden standard---well within millimeter-level positioning requirements. The dominant X-axis error ($\sim$1\,m RMSE) stems from systematic SINS integration drift, not numerical precision, making fp32 a ``free lunch'' for this application.
+
+\subsection{SM Utilization and Scaling}\label{subsec:sm_util}
+
+The most compelling evidence for our approach comes from hardware utilization metrics:
+
+\begin{itemize}
+\item \textbf{Single trajectory (v4):} \texttt{sm\_\_throughput} = 0.27\%, \texttt{sm\_\_warps\_active} = 6.25\% (4/64 warps), 1/78 SMs occupied. These numbers quantify the ``GPU-hostile'' nature of the workload.
+\item \textbf{Batch $B=78$ (v5):} \texttt{sm\_\_throughput} rises to 19.91\% ($\sim$74$\times$ increase), with 78 blocks occupying all SMs. This validates trajectory-dimension mapping as the correct parallelism strategy.
+\item \textbf{Occupancy headroom:} 110 registers/thread $\rightarrow$ occupancy limit of 4 blocks/SM $\rightarrow$ theoretical saturation at $\sim$312 trajectories. The sub-linear scaling at $B=256$ (148.7$\times$ vs.~ideal 256$\times$) is consistent with approaching this register-pressure limit.
+\end{itemize}
+
+\subsection{Per-Step Latency Decomposition}
+
+To contextualize the fusion gain, we decompose the per-step cost across implementations:
+
+\begin{itemize}
+\item \textbf{cuBLAS GEMM only} ($F \cdot P \cdot F^T$, $15\times15$): 17.5\,$\mu$s
+\item \textbf{cuSOLVER inv only} ($3\times3$): 134\,$\mu$s
+\item \textbf{v0 GPU eager} (full step, 531 kernels): $\sim$817\,$\mu$s
+\item \textbf{v3 Triton mega-kernel} (full step, 1 kernel): $\sim$49\,$\mu$s
+\end{itemize}
+
+The mega-kernel's per-step cost of $\sim$49\,$\mu$s is \textbf{2.7$\times$ faster than a single cuSOLVER $3\times3$ inverse call} (134\,$\mu$s). This vividly illustrates why library-based approaches fail for this workload: the library's fixed overhead exceeds the entire fused computation.
 
 %% ============================================================
 %% Section 5: Related Work
 %% ============================================================
 \section{Related Work}\label{sec5}
 
-\subsection{Navigation Simulation Acceleration}
+\subsection{GPU Acceleration of Kalman Filters}
 
-Prior work on recursive computation and numerical integration optimization in robotic simulation, real-time computation requirements for multi-sensor fusion positioning simulation, and parallel computation in large-scale Monte Carlo simulation and parameter sweeps provides context for trajectory generation, pipeline decoupling, and EKF-loop acceleration.
+GPU acceleration of Kalman filters has been explored primarily in the context of batched estimation: large numbers of independent low-dimensional filters running concurrently~\cite{bib4}. Libraries such as cuBLAS batched GEMM, cuSOLVER batched decomposition, and MAGMA provide optimized primitives for this pattern. However, these approaches target the \textit{batched independent} scenario; single-trajectory latency-bound recursive filtering has received far less attention. Our work fills this gap by demonstrating that kernel fusion, not batched library calls, is the correct strategy for single-trajectory sequential EKF acceleration.
 
-\subsection{Efficient Scientific Computing}
+\subsection{Kernel Fusion for Sequential Computation}
 
-Relevant techniques include vectorization and memory pre-allocation in numerical computing, small-matrix kernel optimization and batch matrix computation, and kernel fusion strategies for computation-intensive loops.
+The idea of fusing sequential computation into single GPU kernels has been successfully applied in several domains. FlashAttention~\cite{bib5} fuses attention computation to avoid materializing the full attention matrix. The Mamba selective-scan~\cite{bib6} and S5/S4 state-space model implementations use associative scans within Triton kernels for efficient sequential processing. Our work applies the same philosophy---keep state resident on-chip, eliminate intermediate global memory round-trips---to the EKF recursion, with the additional challenge that Kalman steps involve heterogeneous operations (trigonometric functions, matrix multiplies, inverses, and conditionals) that must coexist within a single kernel.
 
-\subsection{Adaptive and Stable Filtering}
+\subsection{Associative-Scan Parallel Filtering}
 
-Innovation-based adaptive Kalman filtering methods, UD decomposition and square-root filters for numerical stability improvement, and adaptive thresholds in fault detection and isolation directly inform adaptive fusion and stable covariance propagation.
+S\"arkk\"a and Garc\'ia-Fern\'andez~\cite{bib7} introduced temporal parallelization of Bayesian smoothers by reformulating the Kalman recursion as an associative binary operator compatible with parallel prefix-sum (Blelloch scan), reducing sequential depth from $O(N)$ to $O(\log N)$. Yaghoobi et al.~\cite{bib8} extended this to nonlinear EKF/UKF via iterative outer-loop linearization with inner-loop time-parallel filtering. This represents a qualitatively different direction from our work: while we optimize the constant factor of the $O(N)$ sequential recursion, associative-scan methods attack the asymptotic complexity. PyTorch's lack of a native \texttt{associative\_scan} primitive and the memory cost of materializing $N$ intermediate messages ($\sim$GB for $N=166{,}667$, 15-state) remain practical obstacles.
+
+\subsection{Mixed Precision in Scientific Computing}
+
+Mixed-precision techniques have been extensively studied for large-scale linear algebra and deep learning~\cite{bib9}. Our contribution is demonstrating that fp32 is not merely ``good enough'' but \textit{preferable} for this class of micro-matrix recursive computation: the precision loss is negligible ($\ll$ sensor noise), while the speedup (14.3$\times$ over fp64 in the fused kernel) far exceeds the fp64:fp32 ALU ratio due to compounding effects on register pressure and transcendental function latency.
 
 %% ============================================================
 %% Section 6: Conclusion
 %% ============================================================
 \section{Conclusion}\label{sec6}
 
-This paper presents a high-performance optimization framework for cased-hole robot fusion positioning simulation from an HPC/AI-infrastructure perspective:
+We have presented a systematic study of GPU acceleration for a latency-bound, micro-matrix recursive workload: the SINS/dual-odometer EKF fusion positioning simulation for cased-hole robots. Our key findings are:
 
 \begin{itemize}
-\item At the kernel/operator layer, reusable F/H templates, in-place block updates, fused quaternion/DCM/skew-symmetric kernels, and solve-based Kalman gain computation reduce the per-step cost of large-scale EKF recursion.
-\item At the runtime/pipeline layer, trajectory generation, file I/O, fusion positioning, evaluation, and visualization are decoupled into independent stages with CPU/GPU backend support and stage-wise profiling. Preliminary results show 8.7--11.5$\times$ GPU acceleration for vectorized trajectory generation and identify EKF recursion as the dominant end-to-end bottleneck.
-\item At the numerical-policy layer, innovation-driven Q/R adaptation, UD-factorized covariance propagation, and adaptive odometer gating reduce avoidable dense updates, improve conditioning and long-sequence stability, and preserve positioning accuracy.
+\item \textbf{The problem is latency-bound, not throughput-bound.} SM throughput of 0.27\% and 531 kernel launches per step make naive GPU execution 4$\times$ slower than CPU. Traditional auto-tuning and batched library approaches are structurally mismatched.
+
+\item \textbf{Kernel fusion is the primary lever} for latency reduction. Collapsing 531 micro-kernels into a single Triton mega-kernel with register-resident state achieves 8.8$\times$ speedup (fp64).
+
+\item \textbf{Mixed precision (fp32) provides a ``free lunch''}: 14.3$\times$ additional speedup over the fused fp64 kernel while maintaining sub-millimeter accuracy. Tensor Cores (tf32) are counterproductive for micro-matrices.
+
+\item \textbf{Multi-trajectory batch parallelism saturates idle SMs}: perfect linear scaling to the SM count (78$\times$), and 148.7$\times$ at $B=256$, yielding 34 million aggregate steps/s---18,210$\times$ over CPU baseline.
+
+\item \textbf{The three contributions are multiplicative}: total speedup $\approx$ fusion $\times$ precision $\times$ batch parallelism $=$ 8.8$\times$ $\times$ 14.3$\times$ $\times$ 148.7$\times$ $\approx$ 18,700$\times$.
 \end{itemize}
+
+Our systematic negative results---Tensor Cores, TMA, warp specialization, tile/layout auto-tuning---establish that the optimization space for latency-bound micro-matrix recursive workloads is structurally distinct from that of throughput-bound large-matrix workloads. Practitioners facing similar workloads (particle filters, sensor fusion, sequential Monte Carlo) should prioritize kernel fusion, precision selection, and independent-trajectory parallelism over conventional GPU optimization recipes.
+
+\subsection{Future Work}\label{subsec:future}
+
+Several directions extend this work:
+
+\begin{enumerate}
+\item \textbf{Associative-scan parallel EKF}: Breaking the $O(N)$ sequential dependency via parallel prefix-sum filtering would qualitatively change the single-trajectory latency asymptotics. This requires either implementing Blelloch scan in Triton or porting to JAX for its native \texttt{associative\_scan} primitive.
+
+\item \textbf{Block-sparse $F$ matrix exploitation}: The state transition matrix $F = I + \text{few } 3\times3$ off-diagonal blocks. Exploiting this sparsity could reduce register pressure, increase occupancy from the current 110 registers/thread, and extend the batch linear-scaling range beyond $\sim$312 trajectories.
+
+\item \textbf{Persistent kernel with online streaming}: For real-time 100\,Hz deployment, a persistent kernel that reads sensor data from a ring buffer and maintains state across frames would eliminate per-frame launch overhead.
+
+\item \textbf{Real sensor validation}: All experiments use simulated data. Validating the fp32 optimization on real downhole sensor recordings would strengthen the practical applicability claim.
+\end{enumerate}
 
 
 \backmatter

@@ -120,6 +120,19 @@ def main(quick=False):
             _, _, _, _, m = run_ekf_v5(n_steps=N_full, batch=B, precision='fp32', verbose=False)
             rec(f'v5 Batch x{B} fp32 GPU', m)
 
+        # v6 mixed precision (贡献点2 深化)
+        from ekf_v6_mixed import run_ekf_v6_mixed
+        for combo in ['fp32-all', 'bf16-tolerant', 'bf16-moderate', 'tf32-moderate']:
+            _, _, _, _, m = run_ekf_v6_mixed(n_steps=N_full, combo=combo, verbose=False)
+            rec(f'v6 mixed {combo} GPU', m)
+
+        # v7 concurrency (贡献点3 深化) — event-based timing, single-stream
+        from ekf_v7_concurrency import run_ekf_v7_events
+        for B in (1, 78, 128, 256, 312):
+            _, _, _, _, m = run_ekf_v7_events(n_steps=N_full, batch=B, precision='fp32',
+                                               n_streams=1, verbose=False)
+            rec(f'v7 events B={B} fp32 GPU', m)
+
         libref = lib_reference_bench()
         print("\n[lib reference] 15x15 gemm:", f"{libref['gemm_FPFt_us']:.1f}us/step",
               "| cuSOLVER inv3:", f"{libref['cusolver_inv3_us']:.1f}us/step")
