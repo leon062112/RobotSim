@@ -57,6 +57,19 @@ Chawla T~S.
 \newblock In: Mediterranean Offshore Conference.
 \newblock 2024
 
+\bibitem{triton}
+Tillet P, Kung H~T, Cox D.
+\newblock Triton: An intermediate language and compiler for tiled neural
+  network computations.
+\newblock In: Proceedings of the 3rd ACM SIGPLAN International Workshop on
+  Machine Learning and Programming Languages.
+\newblock 2019,  10--19
+
+\bibitem{nvidia2022hopper}
+{NVIDIA Corporation} .
+\newblock {NVIDIA H100 Tensor Core GPU Architecture}.
+\newblock Architecture Whitepaper, 2022
+
 \bibitem{huang2011gpu-kalman}
 Huang M~Y, Wei S~C, Huang B, Chang Y~L.
 \newblock Accelerating the {Kalman} filter on a {GPU}.
@@ -123,14 +136,6 @@ Dai W, Deng H, Rong M, Yang X, Liu H, Liu F, Yang H, Cao Q, Sun Q.
 \newblock In: Proceedings of the 31st ACM SIGPLAN Annual Symposium on
   Principles and Practice of Parallel Programming.
 \newblock 2026,  620--634
-
-\bibitem{triton}
-Tillet P, Kung H~T, Cox D.
-\newblock Triton: An intermediate language and compiler for tiled neural
-  network computations.
-\newblock In: Proceedings of the 3rd ACM SIGPLAN International Workshop on
-  Machine Learning and Programming Languages.
-\newblock 2019,  10--19
 
 \bibitem{abdelfattah2021survey}
 Abdelfattah A, Anzt H, Boman E~G, Carson E, Cojean T, Dongarra J, Fox A, Gates

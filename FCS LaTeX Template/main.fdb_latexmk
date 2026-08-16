@@ -1,13 +1,13 @@
 # Fdb version 4
-["bibtex main"] 1786868615.66291 "main.aux" "main.bbl" "main" 1786870746.88703 0
+["bibtex main"] 1786880053.54072 "main.aux" "main.bbl" "main" 1786880054.94748 0
   "./fcs.bst" 1786008271.56249 18680 73082029395e60daa8012491125b14ab ""
-  "./references.bib" 1786862983.16604 10544 5a340ba8d75079939d08320146600b16 ""
-  "main.aux" 1786870746.61601 14173 55df453a425996d6b1178d949a25bbe1 "pdflatex"
+  "./references.bib" 1786879552.02675 10743 69fbb4fb7b2ad43da12205db0546c19f ""
+  "main.aux" 1786880054.67418 15012 031d6592c6ebe31f0c19fe3eec17d279 "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1786870745.62549 "main.tex" "main.pdf" "main" 1786870746.88718 0
+["pdflatex"] 1786880053.62126 "main.tex" "main.pdf" "main" 1786880054.94761 0
   "../downhole_tractor.png" 1786866925.3384 80547 c9b31be37b62daaf761ba5bfc65d8d11 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/newtx/ntx-ot1-tlf.enc" 1422827479 2083 60e36f8eac802fcaf19eabe2633b406e ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/tex-gyre/q-rm.enc" 1529098226 2409 c64dab22331c83731e970f6020b4448b ""
@@ -20,6 +20,7 @@
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/amsfonts/symbols/msbm5.tfm" 1246382020 940 75ac932a52f80982a9f8ea75d03a34cf ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/amsfonts/symbols/msbm7.tfm" 1246382020 940 228d6584342e91276bf566bcf9716b83 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmr9.tfm" 1136768653 1292 6b21b9c2c7bebb38aa2273f7ca0fb3af ""
+  "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmtt9.tfm" 1136768653 764 c98a2af25c99b73a368cf7336e255190 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/marvosym/umvs.tfm" 1313968873 1772 135d23849cb646acc6bb1ae8d73e3f78 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/NewTXBMI.tfm" 1572128992 1392 a17207635f5e84ce99b1f3136dfb1ea1 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/NewTXMI.tfm" 1572128992 1408 ef71a9098da4d5a1a85b5920860b6731 ""
@@ -65,6 +66,7 @@
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/tex-gyre/rm-qhvb.tfm" 1204998285 11708 5aac7f7988034c04a6d4bd8779adc879 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/tex-gyre/rm-qhvr.tfm" 1204998285 11980 7d1be12f5c8ebd0bffeed63959d1bf9e ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/tex-gyre/ts1-qtmb.tfm" 1254269485 1608 bde4475c6eb5aa292519d95aa26b6413 ""
+  "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt9.pfb" 1248133631 29078 718ea4567ceff944262b0f5b0800e1d9 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/marvosym/marvosym.pfb" 1313968873 91705 188e103f30c94f64bce1570c4b989d07 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/NewTXBMI.pfb" 1572128992 32541 18cc6d4a67e7278b3acd3373acd68025 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/NewTXMI.pfb" 1724614892 32409 aee30089ce2d804d7327a2f8ccff0462 ""
@@ -286,10 +288,10 @@
   "/usr/local/texlive/2026/texmf.cnf" 1772409725 577 648cd9f92f9c0eac486f4c71c85cfbbe ""
   "fcs.cls" 1786008271.56313 24534 b948cc51f17450cef572626a65e13aab ""
   "figures/logo.pdf" 1786008271.56447 4236 529495c37a06e35c886529f831120b53 ""
-  "main.aux" 1786870746.61601 14173 55df453a425996d6b1178d949a25bbe1 "pdflatex"
-  "main.bbl" 1786868615.73793 6818 c86fff446377341a93bb99bbb4e55462 "bibtex main"
-  "main.out" 1786870746.61678 5417 6cfe29603bf67e6d76b1f4deb99cee2a "pdflatex"
-  "main.tex" 1786870733.54102 47779 9fb2162de59cfdab184a0e58e969254c ""
+  "main.aux" 1786880054.67418 15012 031d6592c6ebe31f0c19fe3eec17d279 "pdflatex"
+  "main.bbl" 1786880053.61843 6963 357876fb037de43199590a1d4e7e3919 "bibtex main"
+  "main.out" 1786880054.67585 5588 37804f266640d09820f8815d33dfb396 "pdflatex"
+  "main.tex" 1786880031.50445 52722 7fe6048792d1be9de0b7e34782f85d6b ""
   (generated)
   "main.aux"
   "main.log"

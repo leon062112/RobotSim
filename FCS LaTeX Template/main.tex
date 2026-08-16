@@ -223,87 +223,161 @@ As summarized in \Cref{fig:design-overview}, we optimize this scan along three c
 
 All transformations preserve the ordering of propagation, measurement update, and feedback within a trajectory. We use the CPU fp64 implementation as the semantic reference and validate each transformation with state differences and axis-wise positioning RMSE. Batch implementations additionally compare repeated identical trajectories to detect unintended inter-block state sharing. These checks are part of the design process; the corresponding quantitative results are reported in \Cref{sec:evaluation}.
 
-\begin{figure*}[!t]
+\begin{figure}[!t]
   \centering
   \begin{tikzpicture}[
       font=\scriptsize,
-      input/.style={draw=blue!65!black, rounded corners=2pt,
-        fill=blue!5, align=center, text width=2.55cm,
-        minimum height=12mm, inner sep=3pt},
-      workload/.style={draw=black!65, rounded corners=2pt,
-        fill=black!3, align=center, text width=2.65cm,
-        minimum height=14mm, inner sep=3pt},
-      fusion/.style={draw=blue!70!black, rounded corners=2pt,
-        fill=blue!7, align=center, text width=3.65cm,
-        minimum height=12mm, inner sep=3pt},
-      precision/.style={draw=orange!85!black, rounded corners=2pt,
-        fill=orange!9, align=center, text width=3.65cm,
-        minimum height=12mm, inner sep=3pt},
-      parallel/.style={draw=green!50!black, rounded corners=2pt,
-        fill=green!7, align=center, text width=3.65cm,
-        minimum height=12mm, inner sep=3pt},
-      executor/.style={draw=violet!70!black, very thick, rounded corners=2pt,
-        fill=violet!6, align=center, text width=3.25cm,
-        minimum height=30mm, inner sep=4pt},
-      output/.style={draw=black!65, rounded corners=2pt,
+      input/.style={draw=black!65, rounded corners=2pt,
         fill=black!3, align=center, text width=2.55cm,
-        minimum height=12mm, inner sep=3pt},
+        minimum height=9mm, inner sep=2.5pt},
+      workload/.style={draw=black!65, rounded corners=2pt,
+        fill=black!3, align=center, text width=2.75cm,
+        minimum height=9mm, inner sep=2.5pt},
+      fusion/.style={draw=blue!45!black, rounded corners=2pt,
+        fill=blue!4, align=center, text width=5.25cm,
+        minimum height=10mm, inner sep=2.5pt},
+      precision/.style={draw=blue!60!black, rounded corners=2pt,
+        fill=blue!10, align=center, text width=5.25cm,
+        minimum height=10mm, inner sep=2.5pt},
+      parallel/.style={draw=blue!75!black, rounded corners=2pt,
+        fill=blue!18, align=center, text width=5.25cm,
+        minimum height=10mm, inner sep=2.5pt},
+      output/.style={draw=black!65, rounded corners=2pt,
+        fill=black!3, align=center, text width=5.25cm,
+        minimum height=10mm, inner sep=2.5pt},
       arrow/.style={-{Latex[length=1.8mm]}, semithick, draw=black!70},
-      link/.style={-{Latex[length=1.6mm]}, semithick, draw=black!55}
+      link/.style={-{Latex[length=1.6mm]}, semithick, draw=black!55},
+      bus/.style={semithick, draw=black!55}
     ]
-    \node[input] (inputs) at (0,0)
-      {\textbf{Simulation inputs}\\IMU and odometers\\initial states\\noise and filter settings};
-    \node[workload] (scan) at (3.25,0)
-      {\textbf{Recursive workload}\\$B$ independent trajectories\\$N$ ordered SINS/EKF steps\\loop-carried state and covariance};
-
-    \node[fusion] (fusion) at (7.25,1.75)
-      {\textbf{Contribution 1: kernel fusion}\\Eager operators $\rightarrow$ CUDA Graph\\$\rightarrow$ one Triton whole-scan kernel\\recurrent state retained on chip};
-    \node[precision] (precision) at (7.25,0)
-      {\textbf{Contribution 2: precision specialization}\\separate $\mathit{DT}_{\mathrm{IO}}$, recurrent $\mathit{DT}$,\\and dot-product mode $\mathit{IP}$\\compile-time kernel variants};
-    \node[parallel] (parallel) at (7.25,-1.75)
-      {\textbf{Contribution 3: trajectory parallelism}\\trajectory $b$ $\rightarrow$ CUDA block $b$\\private recurrent state per block\\occupancy-aware batch scaling};
-
-    \node[executor] (executor) at (11.55,0)
-      {\textbf{Composed GPU executor}\\[1mm]
-       specialized Triton program\\per trajectory block\\[1mm]
-       fixed $16\times16$ tiles\\analytical $3\times3$ inverse\\ordered scan over $N$ samples};
-
-    \node[output] (outputs) at (15.15,0.85)
-      {\textbf{Trajectory outputs}\\position, velocity, attitude,\\filter state and covariance};
-    \node[output] (validation) at (15.15,-0.85)
-      {\textbf{Evaluation}\\latency and throughput\\axis-wise RMSE\\CPU fp64 reference};
-
+    \node[input] (inputs) at (-1.75,0)
+      {\textbf{Simulation inputs}\\IMU, odometry, initial state};
+    \node[workload] (scan) at (1.65,0)
+      {\textbf{Recursive SINS/EKF scan}\\$B$ trajectories $\times$ $N$ ordered steps};
     \draw[arrow] (inputs) -- (scan);
-    \draw[link] (scan.east) -- ++(0.35,0) |- (fusion.west);
-    \draw[link] (scan.east) -- (precision.west);
-    \draw[link] (scan.east) -- ++(0.35,0) |- (parallel.west);
-    \draw[link] (fusion.east) -- ++(0.30,0) |- (executor.west);
-    \draw[link] (precision.east) -- (executor.west);
-    \draw[link] (parallel.east) -- ++(0.30,0) |- (executor.west);
-    \draw[arrow] (executor.east) -- ++(0.35,0) |- (outputs.west);
-    \draw[arrow] (executor.east) -- ++(0.35,0) |- (validation.west);
 
-    \node[draw=black!35, dashed, rounded corners=3pt,
-      fit=(fusion)(precision)(parallel)(executor),
-      inner xsep=4mm, inner ysep=3mm] (framework) {};
-    \node[font=\footnotesize\bfseries, anchor=south west,
-      fill=white, inner xsep=1.5mm]
-      at ([xshift=2mm]framework.north west) {Three-axis GPU acceleration framework};
+    \node[fusion] (fusion) at (0,-1.55)
+      {\textbf{\Cref{subsec:kernel-fusion}: whole-scan kernel fusion}\\one Triton kernel; recurrent state retained on chip};
+    \node[precision] (precision) at (0,-3.00)
+      {\textbf{\Cref{subsec:mixed-precision}: component-aware precision}\\specialize $\mathit{DT}_{\mathrm{IO}}$, recurrent $\mathit{DT}$, and dot-product mode $\mathit{IP}$};
+    \node[parallel] (parallel) at (0,-4.45)
+      {\textbf{\Cref{subsec:batch-parallelism}: multi-trajectory parallelism}\\trajectory $b$ $\rightarrow$ CUDA block $b$ with private recurrent state};
+
+    \coordinate (forktop) at ($(scan.south)+(0,-3.5mm)$);
+    \coordinate (lefttop) at (-3.15,-0.75);
+    \coordinate (leftbottom) at (-3.15,-4.45);
+    \draw[bus] (scan.south) -- (forktop) -- (lefttop) -- (leftbottom);
+    \draw[link] (-3.15,-1.55) -- (fusion.west);
+    \draw[link] (-3.15,-3.00) -- (precision.west);
+    \draw[link] (-3.15,-4.45) -- (parallel.west);
+
+    \coordinate (righttop) at (3.15,-1.55);
+    \coordinate (rightbottom) at (3.15,-5.15);
+    \draw[bus] (fusion.east) -- (righttop);
+    \draw[bus] (precision.east) -- (3.15,-3.00);
+    \draw[bus] (parallel.east) -- (3.15,-4.45);
+    \draw[bus] (righttop) -- (rightbottom);
+
+    \node[output] (outputs) at (0,-5.95)
+      {\textbf{Accelerated trajectory outputs}\\position, velocity, attitude, and filter state};
+    \draw[arrow] (rightbottom) -- (0,-5.15) -- (outputs.north);
   \end{tikzpicture}
-  \caption{Design overview of the proposed GPU acceleration framework. The recursive SINS/EKF workload is transformed along three complementary axes: whole-scan kernel fusion reduces launch and state-traffic overhead, component-aware precision specialization balances numerical stability and hardware cost, and multi-trajectory mapping exposes block-level parallelism. The three transformations are composed in one GPU executor and validated against the CPU fp64 reference.}
+  \caption{Compact design overview. The recursive SINS/EKF workload is optimized through whole-scan kernel fusion, component-aware precision specialization, and multi-trajectory parallelism.}
   \label{fig:design-overview}
-\end{figure*}
+\end{figure}
 
 \subsection{From Fragmented Operators to a Fused Recursive Scan}
 \label{subsec:kernel-fusion}
 
-The fusion path has three stages that progressively enlarge the optimization scope. The first stage rewrites scalar tensor construction, host-visible scalar access, and dynamic concatenation as device-side tensor expressions. It also replaces the two possible observation shapes with one fixed three-dimensional representation. When the odometry consistency test rejects the displacement observation, its variance is set to a sufficiently large value, causing the corresponding Kalman gain to approach zero while retaining a static matrix shape. This stage produces a compile-friendly EKF step with fixed control flow and storage dimensions.
+The fusion path has three stages that progressively enlarge the optimization scope. The final whole-scan execution and its correspondence to the GPU memory hierarchy are summarized in \Cref{fig:fusion-path}. The first stage rewrites scalar tensor construction, host-visible scalar access, and dynamic concatenation as device-side tensor expressions. It also replaces the two possible observation shapes with one fixed three-dimensional representation. When the odometry consistency test rejects the displacement observation, its variance is set to a sufficiently large value, causing the corresponding Kalman gain to approach zero while retaining a static matrix shape. This stage produces a compile-friendly EKF step with fixed control flow and storage dimensions.
 
 The second stage captures the fixed-shape step in a CUDA Graph and replays it for the sensor sequence. Graph replay reduces repeated host dispatch, but the device still executes the fine-grained kernels contained in the captured step and transfers recurrent values between them. We retain this stage as an intermediate design point because it separates host launch overhead from device-side fragmentation.
 
 The final stage expresses the complete $N$-step scan as one Triton kernel. A single Triton program processes one trajectory and executes the time loop in program order. At iteration $k$, it loads only the current gyroscope, accelerometer, and odometer samples; updates the quaternion, velocity, and position; constructs the transition and observation operators; propagates the error state and covariance; and applies the EKF feedback. The position, velocity, quaternion, error state, and covariance remain program-local across iterations, eliminating intermediate tensors and recurrent-state round trips to global memory. Only the requested trajectory outputs are stored after each step.
 
 Two transformations make the fused kernel static and self-contained. First, the logical filter matrices are padded to $16\times16$ and accessed with masks, allowing a common tile layout for transition, covariance, observation, and gain products while retaining the original 15-state semantics. Second, the $3\times3$ innovation covariance is inverted through its adjugate and determinant inside the kernel. This avoids invoking a general solver on the critical path and permits graph capture and whole-scan fusion without a host synchronization point. The fused design preserves the unavoidable temporal order and uses locality to shorten its sequential critical path.
+
+\begin{figure}[!t]
+  \centering
+  \begin{tikzpicture}[
+      font=\scriptsize,
+      memory/.style={draw=black!60, rounded corners=2pt, fill=black!5,
+        align=center, text width=2.70cm, minimum height=8mm,
+        inner sep=2pt},
+      cache/.style={draw=black!55, rounded corners=2pt, fill=black!4,
+        align=center, text width=5.15cm, minimum height=7mm,
+        inner sep=2pt},
+      kernelbox/.style={draw=blue!75!black, very thick, rounded corners=2pt,
+        fill=blue!7, minimum width=6.75cm, minimum height=4.35cm},
+      op/.style={draw=blue!70!black, rounded corners=1pt, fill=white,
+        minimum width=13.5mm, minimum height=5.5mm, inner sep=1pt,
+        font=\tiny},
+      register/.style={draw=blue!80!black, rounded corners=2pt,
+        fill=blue!18, align=center, text width=5.70cm,
+        minimum height=8mm, inner sep=2pt},
+      execution/.style={draw=blue!55!black, rounded corners=2pt,
+        fill=blue!3, align=center, text width=5.70cm,
+        minimum height=7mm, inner sep=2pt},
+      benefit/.style={draw=black!50, rounded corners=2pt, fill=black!3,
+        align=left, text width=6.20cm, minimum height=15mm,
+        inner sep=2pt},
+      arrow/.style={-{Latex[length=1.7mm]}, semithick, draw=black!65},
+      fastarrow/.style={-{Latex[length=1.7mm]}, semithick, draw=blue!75!black},
+      storearrow/.style={-{Latex[length=1.7mm]}, semithick, draw=orange!85!black},
+      traffic/.style={{Latex[length=1.6mm]}-{Latex[length=1.6mm]},
+        semithick, draw=orange!85!black}
+    ]
+    % HBM and cache expose only streaming inputs and requested outputs.
+    \node[memory] (sensors) at (-1.68,3.84)
+      {HBM inputs\\IMU and odometer streams};
+    \node[memory] (outputs) at (1.68,3.84)
+      {HBM outputs\\requested trajectory states};
+    \node[cache] (cache) at (0,2.92)
+      {L2 / L1 cache: coalesced sensor loads and output stores};
+    \draw[arrow] (sensors.south) -- node[left, font=\tiny] {read} (cache.north west);
+    \draw[storearrow] (cache.north east) -- node[right, font=\tiny] {write} (outputs.south);
+
+    % The fused program occupies one CUDA block on an SM.
+    \node[kernelbox] (triton) at (0,0.25) {};
+    \node[font=\scriptsize\bfseries] at (0,2.08)
+      {One host launch $\rightarrow$ SM: Triton program / CUDA block $b$};
+    \node[op] (load) at (-2.05,1.30) {load sample $k$};
+    \node[op] (sins) at (0,1.30) {SINS update};
+    \node[op] (models) at (2.05,1.30) {$F,Q,H,R$};
+    \node[op] (predict) at (-2.05,0.48) {EKF predict};
+    \node[op] (inverse) at (0,0.48) {$3\times3$ inverse};
+    \node[op] (feedback) at (2.05,0.48) {update / feedback};
+    \draw[fastarrow] (load) -- (sins);
+    \draw[fastarrow] (sins) -- (models);
+    \draw[fastarrow] (models.south) -- (predict.north east);
+    \draw[fastarrow] (predict) -- (inverse);
+    \draw[fastarrow] (inverse) -- (feedback);
+    \draw[fastarrow] (feedback.east) -- (3.00,0.48) -- (3.00,1.72)
+      -- node[above, font=\tiny] {$k\leftarrow k+1$} (-2.05,1.72)
+      -- (load.north);
+
+    \node[register] (regs) at (0,-0.55)
+      {SM registers / program-local recurrent state:\\$\mathbf q,\mathbf v,\mathbf p,\mathbf x,\mathbf P$ and fixed $16\times16$ matrix tiles};
+    \node[execution] (ordered) at (0,-1.48)
+      {Program-order execution of all $N$ steps\\no intermediate kernel boundary or recurrent-state spill};
+
+    \draw[fastarrow] (cache.south west) -- node[left, font=\tiny, align=right]
+      {stream current\\sample} (load.north west);
+    \draw[storearrow] (feedback.north east) -- ++(0.22,0.36)
+      |- node[pos=0.78, above, font=\tiny] {requested store} (cache.south east);
+    \draw[fastarrow] (feedback.south) -- (regs.north east);
+    \draw[fastarrow] (regs) -- (ordered);
+
+    \node[font=\footnotesize\bfseries] at (0,-2.42)
+      {Why this mapping improves performance};
+    \node[benefit] at (0,-3.35)
+      {$\bullet$ one host launch and program-order synchronization\\
+       $\bullet$ recurrent navigation/EKF state reused in SM registers\\
+       $\bullet$ only sensor streams and requested outputs cross HBM\\
+       $\bullet$ analytical $3\times3$ inverse remains inside the fused program};
+  \end{tikzpicture}
+  \caption{Correspondence between the Triton whole-scan operator and the GPU memory hierarchy. Sensor samples and requested outputs are streamed through HBM and cache, while one CUDA block executes the ordered trajectory scan and retains recurrent navigation and EKF state in SM registers. This mapping reduces dispatch, synchronization, and global-memory traffic on the latency-bound critical path.}
+  \label{fig:fusion-path}
+\end{figure}
 
 \subsection{Component-Aware Precision Specialization}
 \label{subsec:mixed-precision}
@@ -349,6 +423,13 @@ The mapping also gives a simple resource-based scaling model. Let $S$ denote the
 \end{equation}
 For $B\leq S$, different trajectories can be placed on different SMs and aggregate throughput is expected to grow nearly linearly. For $S<B\leq B_{\mathrm{sat}}$, multiple blocks reside on an SM and increasingly compete for registers and execution resources. Beyond $B_{\mathrm{sat}}$, additional blocks execute in waves, so a larger batch need not improve instantaneous throughput. The model connects the algorithmic batch dimension to observable hardware limits and is tested with the batch-size sweep in \Cref{subsec:batch-evaluation}.
 
+\subsection{Implementation Details}
+\label{subsec:implementation-details}
+
+The complete fused scan is implemented as one \texttt{@triton.jit} kernel, with one Triton program assigned to each trajectory. Triton provides a Python-like programming interface, just-in-time compilation, and backend-specific code generation, substantially reducing the development effort compared with maintaining separate low-level kernels. The same block-level program can be compiled by supported backends for NVIDIA CUDA and AMD ROCm devices, while compile-time constants and \texttt{triton.autotune} allow the number of warps, pipeline stages, tile shapes, and arithmetic modes to be selected for each target. Triton therefore combines source-level portability with architecture-aware optimization, avoiding a complete rewrite of the SINS/EKF kernel for every GPU platform~\cite{triton}.
+
+Hopper illustrates this hardware-specific optimization path. For eligible data types and tile shapes, Triton can lower \texttt{tl.dot} to Hopper Tensor Core MMA or warp-group MMA instructions without requiring manually written CUDA WMMA code. It also exposes tensor descriptors and TMA-based asynchronous data movement, together with configurable warp and software-pipeline organization~\cite{nvidia2022hopper}.
+
 \section{Evaluation}
 \label{sec:evaluation}
 
@@ -363,7 +444,7 @@ Experiments use an NVIDIA Hopper GPU with 78 SMs, PyTorch 2.11.0, CUDA 12.9, and
 \subsection{End-to-End Performance}
 \label{subsec:end-to-end}
 
-\begin{table}[!t]
+\begin{table}[!b]
   \centering
   \caption{End-to-end performance summary. The final manuscript will report means and variability over repeated runs.}
   \label{tab:end-to-end}

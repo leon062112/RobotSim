@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.20)  16 AUG 2026 16:59
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.20)  16 AUG 2026 19:34
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1498,7 +1498,7 @@ LaTeX Font Info:    Font shape `U/ntxsyc/m/n' will be
 (Font)              scaled to size 7.3pt on input line 47.
 LaTeX Font Info:    Font shape `U/ntxexa/m/n' will be
 (Font)              scaled to size 7.3pt on input line 47.
-<figures/logo.pdf, id=127, 53.19875pt x 76.285pt>
+<figures/logo.pdf, id=131, 53.19875pt x 76.285pt>
 File: figures/logo.pdf Graphic file (type pdf)
 <use figures/logo.pdf>
 Package pdftex.def Info: figures/logo.pdf  used on input line 47.
@@ -1510,7 +1510,7 @@ local/texlive/2026/texmf-dist/fonts/enc/dvips/newtx/ntx-ot1-tlf.enc}{/usr/local
 
 {/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/tex-gyre/q-rm.enc} <./figur
 es/logo.pdf>]
-<../downhole_tractor.png, id=167, 932.48375pt x 577.15625pt>
+<../downhole_tractor.png, id=171, 932.48375pt x 577.15625pt>
 File: ../downhole_tractor.png Graphic file (type png)
 <use ../downhole_tractor.png>
 Package pdftex.def Info: ../downhole_tractor.png  used on input line 50.
@@ -1621,73 +1621,72 @@ Underfull \vbox (badness 10000) has occurred while \output is active []
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
 LaTeX Font Info:    Font shape `OT1/ntxtlf/b/n' will be
-(Font)              scaled to size 6.0pt on input line 255.
+(Font)              scaled to size 6.0pt on input line 253.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 6.5pt on input line 262.
+(Font)              scaled to size 6.5pt on input line 261.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 5.5pt on input line 262.
+(Font)              scaled to size 5.5pt on input line 261.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 7.3pt on input line 297.
+(Font)              scaled to size 7.3pt on input line 288.
 
 Underfull \vbox (badness 2302) has occurred while \output is active []
 
  [4]
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 9.0pt on input line 304.
+(Font)              scaled to size 9.0pt on input line 295.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 6.6pt on input line 304.
+(Font)              scaled to size 6.6pt on input line 295.
+LaTeX Font Info:    Font shape `OT1/ntxtlf/m/n' will be
+(Font)              scaled to size 5.0pt on input line 336.
 
 [5]
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 10.95pt on input line 352.
+(Font)              scaled to size 10.95pt on input line 433.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 8.0pt on input line 352.
+(Font)              scaled to size 8.0pt on input line 433.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 6.1pt on input line 352.
- [6]
+(Font)              scaled to size 6.1pt on input line 433.
+ [6] [7]
 LaTeX Font Info:    Font shape `OT1/ntxtlf/m/n' will be
-(Font)              scaled to size 8.5pt on input line 440.
+(Font)              scaled to size 8.5pt on input line 521.
 LaTeX Font Info:    Font shape `OT1/ntxtlf/b/n' will be
-(Font)              scaled to size 5.5pt on input line 442.
- (./main.bbl [7]
-Underfull \vbox (badness 10000) has occurred while \output is active []
-
-) [8]
-(./main.aux)
+(Font)              scaled to size 5.5pt on input line 523.
+ (./main.bbl) [8] (./main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2020/03/25>
  ***********
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: 6CFE29603BF67E6D76B1F4DEB99CEE2A;5417.
+(rerunfilecheck)             Checksum: 37804F266640D09820F8815D33DFB396;5588.
  ) 
 Here is how much of TeX's memory you used:
- 37547 strings out of 467525
- 699652 string characters out of 5418982
- 1101597 words of memory out of 5000000
- 65225 multiletter control sequences out of 15000+600000
- 777617 words of font info for 569 fonts, out of 8000000 for 9000
+ 37697 strings out of 467525
+ 702467 string characters out of 5418982
+ 1109342 words of memory out of 5000000
+ 65353 multiletter control sequences out of 15000+600000
+ 780609 words of font info for 584 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  113i,14n,122p,1880b,911s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/NewTXBMI.pfb></u
 sr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/NewTXMI.pfb></usr/loc
 al/texlive/2026/texmf-dist/fonts/type1/public/newtx/NewTXMI5.pfb></usr/local/te
 xlive/2026/texmf-dist/fonts/type1/public/newtx/NewTXMI7.pfb></usr/local/texlive
-/2026/texmf-dist/fonts/type1/public/marvosym/marvosym.pfb></usr/local/texlive/2
-026/texmf-dist/fonts/type1/public/tex-gyre/qhvb.pfb></usr/local/texlive/2026/te
-xmf-dist/fonts/type1/public/tex-gyre/qhvr.pfb></usr/local/texlive/2026/texmf-di
-st/fonts/type1/public/tex-gyre/qtmb.pfb></usr/local/texlive/2026/texmf-dist/fon
-ts/type1/public/newtx/txbsys.pfb></usr/local/texlive/2026/texmf-dist/fonts/type
-1/public/newtx/txexs.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public
-/newtx/txmiaX.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/
-txsym.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/txsys.pf
-b></usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/ztmb.pfb></usr/l
-ocal/texlive/2026/texmf-dist/fonts/type1/public/newtx/ztmr.pfb></usr/local/texl
-ive/2026/texmf-dist/fonts/type1/public/newtx/ztmri.pfb>
-Output written on main.pdf (8 pages, 325001 bytes).
+/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt9.pfb></usr/local/texlive/2
+026/texmf-dist/fonts/type1/public/marvosym/marvosym.pfb></usr/local/texlive/202
+6/texmf-dist/fonts/type1/public/tex-gyre/qhvb.pfb></usr/local/texlive/2026/texm
+f-dist/fonts/type1/public/tex-gyre/qhvr.pfb></usr/local/texlive/2026/texmf-dist
+/fonts/type1/public/tex-gyre/qtmb.pfb></usr/local/texlive/2026/texmf-dist/fonts
+/type1/public/newtx/txbsys.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/
+public/newtx/txexs.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/n
+ewtx/txmiaX.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/tx
+sym.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/txsys.pfb>
+</usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/ztmb.pfb></usr/loc
+al/texlive/2026/texmf-dist/fonts/type1/public/newtx/ztmr.pfb></usr/local/texliv
+e/2026/texmf-dist/fonts/type1/public/newtx/ztmri.pfb>
+Output written on main.pdf (8 pages, 340299 bytes).
 PDF statistics:
- 355 PDF objects out of 1000 (max. 8388607)
- 303 compressed objects within 4 object streams
- 76 named destinations out of 1000 (max. 500000)
- 129775 words of extra memory for PDF output out of 154059 (max. 10000000)
+ 373 PDF objects out of 1000 (max. 8388607)
+ 319 compressed objects within 4 object streams
+ 79 named destinations out of 1000 (max. 500000)
+ 136439 words of extra memory for PDF output out of 154059 (max. 10000000)
 

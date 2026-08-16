@@ -636,13 +636,18 @@ INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Italic-tlf-o
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Italic-tlf-ot1.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Italic-tlf-ot1.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Italic-tlf-ot1.tfm
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Regular-tlf-ot1.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/vf/public/newtx/ntx-Bold-tlf-ot1.vf
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/txbmiaX.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Bold-tlf-ot1r.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/vf/public/newtx/ntx-Italic-tlf-ot1.vf
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/NewTXMI.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Italic-tlf-ot1r.tfm
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/vf/public/newtx/ntx-Regular-tlf-ot1.vf
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/txmiaX.tfm
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Regular-tlf-ot1r.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/vf/public/newtx/ntx-Italic-tlf-ot1.vf
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/cm/cmtt9.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Italic-tlf-ot1.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Italic-tlf-ot1.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Italic-tlf-ot1.tfm
@@ -662,6 +667,7 @@ INPUT /usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/NewTXBMI.pfb
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/NewTXMI.pfb
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/NewTXMI5.pfb
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/NewTXMI7.pfb
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt9.pfb
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/type1/public/marvosym/marvosym.pfb
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/type1/public/tex-gyre/qhvb.pfb
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/type1/public/tex-gyre/qhvr.pfb
