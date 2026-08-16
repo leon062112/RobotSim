@@ -204,12 +204,48 @@ Uniformly changing the precision of the estimator overlooks the different roles 
 
 Lower nominal precision also does not guarantee lower execution time. TensorFloat-32 and Tensor Core paths may require conversion, padding, and scheduling work that is difficult to amortize for the small matrices in this estimator. Storage precision, recurrent arithmetic, and matrix-multiplication mode consequently present different accuracy and performance trade-offs. This behavior motivates component-level precision choices evaluated with both hardware measurements and complete-trajectory numerical error.
 
+\Cref{tab:precision-isolation} isolates one component at a time: each row lowers the precision of a single component while the rest stay in fp32/IEEE-754, on the full 166{,}667-step trajectory; errors are reported as a percentage of the $500$\,m trajectory length. Loading sensors in fp16 and the matrix products in TF32 leave both axis errors unchanged, whereas bfloat16 sensor I/O raises the $z$-axis error by two orders of magnitude and fp16 recurrent-state storage raises the $x$-axis error from $0.2\%$ to $56\%$, i.e., the filter diverges. Precision sensitivity is thus component-specific rather than uniform, so a single global precision is both wasteful where it could be lowered and unsafe where it must remain high---the motivation for the component-aware scheme in \Cref{sec:methodology}.
+
+\begin{table}[H]
+  \centering
+  \caption{Precision sensitivity of representative EKF components. One component is lowered per row; the rest stay fp32/IEEE-754 (full 166{,}667-step trajectory). Errors are RMS positioning error as a percentage of the $500$\,m trajectory length.}
+  \label{tab:precision-isolation}
+  \begin{tabular}{@{}llrr@{}}
+    \toprule
+    Component isolated & Precision knob & x-error (\%) & z-error (\%) \\
+    \midrule
+    reference (all fp32) & fp32 / IEEE & $0.204$ & $0.002$ \\
+    sensor I/O load & fp16 & $0.204$ & $0.002$ \\
+    matrix products (8 dots) & TF32 & $0.205$ & $0.002$ \\
+    sensor I/O load & bfloat16 & $0.206$ & $0.203$ \\
+    recurrent state (pos/vel/quat) & fp16 storage & $56.4$ & $0.002$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 \subsection{Independent Trajectories Supply Device-Level Parallelism}
 \label{subsec:motivation-trajectories}
 
-The state and covariance at time $k$ depend on the result at time $k-1$, which limits temporal parallelism within one trajectory. Increasing the tile size or assigning more threads to an individual small matrix product cannot create work along this dependency chain. After fusion, one trajectory is processed by one block and still leaves most SMs without useful work, so reducing single-trajectory latency alone cannot fully utilize the device.
+The state and covariance at time $k$ depend on the result at time $k-1$, which limits temporal parallelism within one trajectory. Increasing the tile size or assigning more threads to an individual small matrix product cannot create work along this dependency chain. Kernel fusion removes the dispatch and state-traffic overhead identified in \Cref{subsec:motivation-latency}, but it does not change this picture: a single fused trajectory still launches one block, with grid size $(1,1,1)$ and $128$ threads (four warps). Profiling this kernel on the Hopper device (\Cref{tab:motivation-utilization}) shows that only one of the $78$ streaming multiprocessors hosts the block, the achieved occupancy is $6.25\%$ (four of $64$ warps on that multiprocessor), the waves-per-multiprocessor is $0.00$, and the device-wide SM throughput stays at approximately $0.27\%$---the same underutilized level as the unfused single-trajectory baseline reported in \Cref{tab:baseline-characteristics}. Fusion therefore shortens the sequential critical path of one trajectory, but because a single trajectory exposes no more than one block, the device is left almost entirely idle and reducing single-trajectory latency alone cannot fill it.
 
 Simulation campaigns naturally provide an outer parallel dimension. Different noise realizations, obstacle configurations, and filter parameters produce independent trajectories with no shared recurrent state. Mapping these trajectories to separate blocks preserves the original update order within every filter while increasing aggregate device utilization. Scaling eventually becomes limited by the number of SMs and by register-constrained block residency. Together, the three observations above lead to whole-scan kernel fusion, component-aware precision, and multi-trajectory parallelism, which are developed in the next section.
+
+\begin{table}[H]
+  \centering
+  \caption{Measured utilization of a single fused trajectory (fp32 mega-kernel, one block per trajectory; Hopper-class GPU with $78$ SMs). One block occupies a single streaming multiprocessor at low warp occupancy, so the device stays almost entirely idle.}
+  \label{tab:motivation-utilization}
+  \begin{tabular}{@{}lr@{}}
+    \toprule
+    Characteristic & Value \\
+    \midrule
+    Grid / block size & $(1,1,1)$ / $128$ threads ($4$ warps) \\
+    SMs hosting the block & $1$ of $78$ \\
+    Achieved occupancy & $6.25\%$ ($4 / 64$ warps) \\
+    Waves per multiprocessor & $0.00$ \\
+    Device SM throughput & $\approx 0.27\%$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \section{Methodology}
 \label{sec:methodology}
