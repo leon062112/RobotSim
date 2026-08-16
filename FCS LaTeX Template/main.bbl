@@ -1,0 +1,171 @@
+\begin{thebibliography}{10}
+
+\bibitem{liu2025embodied-survey}
+Liu Y, Chen W, Bai Y, Liang X, Li~G, Gao W, Lin L.
+\newblock Aligning cyber space with physical world: A comprehensive survey on
+  embodied {AI}.
+\newblock IEEE/ASME Transactions on Mechatronics, 2025, 30(6): 7253--7274
+
+\bibitem{he2024legged-state}
+He~Z, Teng S, Lin T~Y, Ghaffari M, Gu~Y.
+\newblock Legged robot state estimation within non-inertial environments.
+\newblock In: 2024 IEEE 63rd Conference on Decision and Control (CDC).
+\newblock 2024,  2469--2474
+
+\bibitem{ou2024leg-kilo}
+Ou~G, Li~D, Li~H.
+\newblock {Leg-KILO}: Robust kinematic-inertial-lidar odometry for dynamic
+  legged robots.
+\newblock IEEE Robotics and Automation Letters, 2024, 9(10): 8194--8201
+
+\bibitem{embodied-ai-survey}
+Duan J, Yu~S, Tan H~L, Zhu H, Tan C.
+\newblock A survey of embodied {AI}: From simulators to research tasks.
+\newblock IEEE Transactions on Emerging Topics in Computational Intelligence,
+  2022, 6(2): 230--244
+
+\bibitem{bloesch2012}
+Bloesch M, Hutter M, Hoepflinger M, Leutenegger S, Gehring C, Remy C~D,
+  Siegwart R.
+\newblock State estimation for legged robots: Consistent fusion of leg
+  kinematics and {IMU}.
+\newblock In: Robotics: Science and Systems VIII.
+\newblock 2012
+
+\bibitem{cerberus2022}
+Tranzatto M, Miki T, Dharmadhikari M, Bernreiter L, Kulkarni M, Mascarich F,
+  Andersson O, Khattak S, Hutter M, Siegwart R, Alexis K.
+\newblock {CERBERUS} in the {DARPA} subterranean challenge.
+\newblock Science Robotics, 2022, 7(66): eabp9742
+
+\bibitem{isaacgym2021}
+Makoviychuk V, Wawrzyniak L, Guo Y, Lu~M, Storey K, Macklin M, Hoeller D, Rudin
+  N, Allshire A, Handa A, State G.
+\newblock {Isaac Gym}: High performance {GPU}-based physics simulation for
+  robot learning.
+\newblock arXiv preprint arXiv:2108.10470, 2021
+
+\bibitem{he2020downhole-tractor}
+He~L, McAllister J, Hawkins J, Turner M.
+\newblock Application of downhole tractor in gas well zonal isolation.
+\newblock In: SPE/ICoTA Well Intervention Conference and Exhibition.
+\newblock 2020
+
+\bibitem{chawla2024tractor-glide}
+Chawla T~S.
+\newblock Downhole wireline tractor glide in horizontal wells of {UAE}.
+\newblock In: Mediterranean Offshore Conference.
+\newblock 2024
+
+\bibitem{huang2011gpu-kalman}
+Huang M~Y, Wei S~C, Huang B, Chang Y~L.
+\newblock Accelerating the {Kalman} filter on a {GPU}.
+\newblock In: Proceedings of the 17th IEEE International Conference on Parallel
+  and Distributed Systems.
+\newblock 2011
+
+\bibitem{ai2021gpu-kalman}
+Ai~X, Mania G, Gray H~M, K{\"u}hn M, Styles N.
+\newblock A {GPU}-based {Kalman} filter for track fitting.
+\newblock Computing and Software for Big Science, 2021, 5(1): 20
+
+\bibitem{liu2024fasttrack}
+Liu C, Li~H, Wang Z.
+\newblock {FastTrack}: A highly efficient and generic {GPU}-based multi-object
+  tracking method with parallel {Kalman} filter.
+\newblock International Journal of Computer Vision, 2024, 132(5): 1463--1483
+
+\bibitem{sarkka2021temporal}
+S{\"a}rkk{\"a} S, Garc{\'i}a-Fern{\'a}ndez {\'A}~F.
+\newblock Temporal parallelization of bayesian smoothers.
+\newblock IEEE Transactions on Automatic Control, 2021, 66(1): 299--306
+
+\bibitem{jia2020megakernels}
+Jia L, Liang Y, Li~X, Lu~L, Yan S.
+\newblock Enabling efficient fast convolution algorithms on {GPU}s via
+  {MegaKernels}.
+\newblock IEEE Transactions on Computers, 2020
+
+\bibitem{shi2023welder}
+Shi Y, Yang Z, Xue J, Ma~L, Xia Y, Miao Z, Guo Y, Yang F, Zhou L.
+\newblock {Welder}: Scheduling deep learning memory access via tile-graph.
+\newblock In: Proceedings of the 17th USENIX Symposium on Operating Systems
+  Design and Implementation.
+\newblock 2023,  701--718
+
+\bibitem{zheng2023chimera}
+Zheng S, Chen S, Song P, Chen R, Li~X, Yan S, Lin D, Leng J, Liang Y.
+\newblock {Chimera}: An analytical optimizing framework for effective
+  compute-intensive operators fusion.
+\newblock In: Proceedings of the 29th IEEE International Symposium on
+  High-Performance Computer Architecture.
+\newblock 2023,  1113--1126
+
+\bibitem{zhang2024mcfuser}
+Zhang Z, Yang D, Zhou X, Cheng D.
+\newblock {MCFuser}: High-performance and rapid fusion of memory-bound
+  compute-intensive operators.
+\newblock In: Proceedings of the International Conference for High Performance
+  Computing, Networking, Storage and Analysis.
+\newblock 2024,  1--15
+
+\bibitem{wu2025mirage}
+Wu~M, Cheng X, Liu S, Shi C, Ji~J, Ao~M~K, Velliengiri P, Miao X, Padon O, Jia
+  Z.
+\newblock {Mirage}: A multi-level superoptimizer for tensor programs.
+\newblock In: Proceedings of the 19th USENIX Symposium on Operating Systems
+  Design and Implementation.
+\newblock 2025,  21--38
+
+\bibitem{dai2026stof}
+Dai W, Deng H, Rong M, Yang X, Liu H, Liu F, Yang H, Cao Q, Sun Q.
+\newblock Accelerating sparse transformer inference on {GPU}.
+\newblock In: Proceedings of the 31st ACM SIGPLAN Annual Symposium on
+  Principles and Practice of Parallel Programming.
+\newblock 2026,  620--634
+
+\bibitem{triton}
+Tillet P, Kung H~T, Cox D.
+\newblock Triton: An intermediate language and compiler for tiled neural
+  network computations.
+\newblock In: Proceedings of the 3rd ACM SIGPLAN International Workshop on
+  Machine Learning and Programming Languages.
+\newblock 2019,  10--19
+
+\bibitem{abdelfattah2021survey}
+Abdelfattah A, Anzt H, Boman E~G, Carson E, Cojean T, Dongarra J, Fox A, Gates
+  M, Higham N~J, Li~X~S, Loe J, Luszczek P, Pranesh S, Rajamanickam S, Ribizel
+  T, Smith B~F, Swirydowicz K, Thomas S, Tomov S, Tsai Y~M, Yang U~M.
+\newblock A survey of numerical linear algebra methods utilizing
+  mixed-precision arithmetic.
+\newblock The International Journal of High Performance Computing Applications,
+  2021, 35(4): 344--369
+
+\bibitem{mixed-precision}
+Baboulin M, Buttari A, Dongarra J, Kurzak J, Langou J, Langou J, Luszczek P,
+  Tomov S.
+\newblock Accelerating scientific computations with mixed precision algorithms.
+\newblock Computer Physics Communications, 2009, 180(12): 2526--2533
+
+\bibitem{haidar2018tensorcores}
+Haidar A, Tomov S, Dongarra J, Higham N~J.
+\newblock Harnessing {GPU} tensor cores for fast {FP16} arithmetic to speed up
+  mixed-precision iterative refinement solvers.
+\newblock In: Proceedings of the International Conference for High Performance
+  Computing, Networking, Storage and Analysis.
+\newblock 2018,  603--613
+
+\bibitem{rubio2013precimonious}
+Rubio-Gonz{\'a}lez C, Nguyen C, Nguyen H~D, Demmel J, Kahan W, Sen K, Bailey
+  D~H, Iancu C, Hough D.
+\newblock {Precimonious}: Tuning assistant for floating-point precision.
+\newblock In: Proceedings of the International Conference on High Performance
+  Computing, Networking, Storage and Analysis.
+\newblock 2013,  1--12
+
+\bibitem{dai2025comp}
+Dai W, Jia Z, Bai Y, Sun Q.
+\newblock Convergence-aware operator-wise mixed-precision training.
+\newblock CCF Transactions on High Performance Computing, 2025, 7: 43--57
+
+\end{thebibliography}
