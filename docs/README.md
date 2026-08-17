@@ -5,5 +5,3 @@
 - `reports/`：优化过程、实验总结和阶段报告。
 - `references/`：参考论文和技术资料。
 - `development/`：迁移与开发说明。
-- `assets/`：可编辑的图稿和检查产物。
-- `archive/`：历史补丁等归档材料。
