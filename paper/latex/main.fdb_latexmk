@@ -1,13 +1,13 @@
 # Fdb version 4
-["bibtex main"] 1786882267.89557 "main.aux" "main.bbl" "main" 1786960013.35851 0
-  "./fcs.bst" 1786008271.56249 18680 73082029395e60daa8012491125b14ab ""
-  "./references.bib" 1786879552.02675 10743 69fbb4fb7b2ad43da12205db0546c19f ""
-  "main.aux" 1786960013.07495 13994 17f370fc1679436346b47b5b9d424e54 "pdflatex"
+["bibtex main"] 1786961447.87182 "main.aux" "main.bbl" "main" 1786961449.2183 0
+  "./fcs.bst" 1786960912.16865 18680 73082029395e60daa8012491125b14ab ""
+  "./references.bib" 1786960912.17507 10743 69fbb4fb7b2ad43da12205db0546c19f ""
+  "main.aux" 1786961448.95832 15218 227361cd386585cea2de0dcf96ebcfa3 "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1786960012.0805 "main.tex" "main.pdf" "main" 1786960013.35861 0
+["pdflatex"] 1786961447.95065 "main.tex" "main.pdf" "main" 1786961449.21843 0
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/newtx/ntx-ot1-tlf.enc" 1422827479 2083 60e36f8eac802fcaf19eabe2633b406e ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/tex-gyre/q-rm.enc" 1529098226 2409 c64dab22331c83731e970f6020b4448b ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/tex-gyre/q-ts1.enc" 1529098226 3124 3813fd4c981d99822890a2861b0d274c ""
@@ -285,13 +285,13 @@
   "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1776692452 5541377 04880c840ca220163a28f1a3af0ee662 ""
   "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt" 1776692358 3636764 0325a1370a966858572dfe953c7c0f25 ""
   "/usr/local/texlive/2026/texmf.cnf" 1772409725 577 648cd9f92f9c0eac486f4c71c85cfbbe ""
-  "fcs.cls" 1786008271.56313 24534 b948cc51f17450cef572626a65e13aab ""
-  "figures/downhole_tractor.png" 1786866925.3384 80547 c9b31be37b62daaf761ba5bfc65d8d11 ""
-  "figures/logo.pdf" 1786008271.56447 4236 529495c37a06e35c886529f831120b53 ""
-  "main.aux" 1786960013.07495 13994 17f370fc1679436346b47b5b9d424e54 "pdflatex"
-  "main.bbl" 1786882267.97253 6963 357876fb037de43199590a1d4e7e3919 "bibtex main"
-  "main.out" 1786960013.07578 5588 37804f266640d09820f8815d33dfb396 "pdflatex"
-  "main.tex" 1786959704.28403 52652 b9c7c2d6ce2c4e6b942763da28654f9a ""
+  "fcs.cls" 1786960912.16899 24534 b948cc51f17450cef572626a65e13aab ""
+  "figures/downhole_tractor.png" 1786960912.16937 80547 c9b31be37b62daaf761ba5bfc65d8d11 ""
+  "figures/logo.pdf" 1786960912.17001 4236 529495c37a06e35c886529f831120b53 ""
+  "main.aux" 1786961448.95832 15218 227361cd386585cea2de0dcf96ebcfa3 "pdflatex"
+  "main.bbl" 1786961447.94763 6963 357876fb037de43199590a1d4e7e3919 "bibtex main"
+  "main.out" 1786961448.95931 5588 37804f266640d09820f8815d33dfb396 "pdflatex"
+  "main.tex" 1786961288.18305 54779 460a4a6cca050cb1ff65ebbf14c04336 ""
   (generated)
   "main.aux"
   "main.log"

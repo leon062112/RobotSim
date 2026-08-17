@@ -64,7 +64,7 @@ def main():
     props = torch.cuda.get_device_properties(0)
     print(f"[profile_sm_v7] SMs: {props.multi_processor_count} "
           f"max_threads/SM: {props.max_threads_per_multi_processor} "
-          f"regs/SM: {props.registers_per_multiprocessor}")
+          f"regs/SM: {getattr(props, 'regs_per_multiprocessor', getattr(props, 'registers_per_multiprocessor', 'unknown'))}")
 
     if mode == 'v4':
         from ekf_v4 import run_ekf_v4
