@@ -50,35 +50,40 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Precision Choices Have Unequal Numerical and Hardware Effects}{4}{subsection.3.2}\protected@file@percent }
 \newlabel{subsec:motivation-precision}{{3.2}{4}{Precision Choices Have Unequal Numerical and Hardware Effects}{subsection.3.2}{}}
 \newlabel{subsec:motivation-precision@cref}{{[subsection][2][3]3.2}{[1][4][]4}{}{}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Component-isolation precision study over the full 166,667-step trajectory. Each row lowers one component while the remaining components use fp32/IEEE arithmetic; values report the RMSE increase relative to the all-fp32 reference.}}{4}{table.caption.4}\protected@file@percent }
+\newlabel{tab:precision-isolation}{{2}{4}{Component-isolation precision study over the full 166,667-step trajectory. Each row lowers one component while the remaining components use fp32/IEEE arithmetic; values report the RMSE increase relative to the all-fp32 reference}{table.caption.4}{}}
+\newlabel{tab:precision-isolation@cref}{{[table][2][]2}{[1][4][]4}{}{}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Independent Trajectories Supply Device-Level Parallelism}{4}{subsection.3.3}\protected@file@percent }
 \newlabel{subsec:motivation-trajectories}{{3.3}{4}{Independent Trajectories Supply Device-Level Parallelism}{subsection.3.3}{}}
 \newlabel{subsec:motivation-trajectories@cref}{{[subsection][3][3]3.3}{[1][4][]4}{}{}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Measured utilization for one fused fp32 trajectory on a 78-SM Hopper GPU. The kernel uses one 128-thread block per trajectory.}}{4}{table.caption.5}\protected@file@percent }
+\newlabel{tab:motivation-utilization}{{3}{4}{Measured utilization for one fused fp32 trajectory on a 78-SM Hopper GPU. The kernel uses one 128-thread block per trajectory}{table.caption.5}{}}
+\newlabel{tab:motivation-utilization@cref}{{[table][3][]3}{[1][4][]4}{}{}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {4}Methodology}{4}{section.4}\protected@file@percent }
 \newlabel{sec:methodology}{{4}{4}{Methodology}{section.4}{}}
 \newlabel{sec:methodology@cref}{{[section][4][]4}{[1][4][]4}{}{}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Overview}{4}{subsection.4.1}\protected@file@percent }
 \newlabel{subsec:method-overview}{{4.1}{4}{Overview}{subsection.4.1}{}}
 \newlabel{subsec:method-overview@cref}{{[subsection][1][4]4.1}{[1][4][]4}{}{}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Compact design overview. The recursive SINS/EKF workload is optimized through whole-scan kernel fusion, component-aware precision specialization, and multi-trajectory parallelism.}}{5}{figure.caption.4}\protected@file@percent }
-\newlabel{fig:design-overview}{{3}{5}{Compact design overview. The recursive SINS/EKF workload is optimized through whole-scan kernel fusion, component-aware precision specialization, and multi-trajectory parallelism}{figure.caption.4}{}}
-\newlabel{fig:design-overview@cref}{{[figure][3][]3}{[1][4][]5}{}{}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Compact design overview. The recursive SINS/EKF workload is optimized through whole-scan kernel fusion, component-aware precision specialization, and multi-trajectory parallelism.}}{5}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:design-overview}{{3}{5}{Compact design overview. The recursive SINS/EKF workload is optimized through whole-scan kernel fusion, component-aware precision specialization, and multi-trajectory parallelism}{figure.caption.6}{}}
+\newlabel{fig:design-overview@cref}{{[figure][3][]3}{[1][5][]5}{}{}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.2}From Fragmented Operators to a Fused Recursive Scan}{5}{subsection.4.2}\protected@file@percent }
 \newlabel{subsec:kernel-fusion}{{4.2}{5}{From Fragmented Operators to a Fused Recursive Scan}{subsection.4.2}{}}
-\newlabel{subsec:kernel-fusion@cref}{{[subsection][2][4]4.2}{[1][4][]5}{}{}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Precision dimensions exposed by the fused implementation.}}{5}{table.caption.5}\protected@file@percent }
-\newlabel{tab:precision-design}{{2}{5}{Precision dimensions exposed by the fused implementation}{table.caption.5}{}}
-\newlabel{tab:precision-design@cref}{{[table][2][]2}{[1][5][]5}{}{}{}}
+\newlabel{subsec:kernel-fusion@cref}{{[subsection][2][4]4.2}{[1][5][]5}{}{}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Component-Aware Precision Specialization}{5}{subsection.4.3}\protected@file@percent }
 \newlabel{subsec:mixed-precision}{{4.3}{5}{Component-Aware Precision Specialization}{subsection.4.3}{}}
 \newlabel{subsec:mixed-precision@cref}{{[subsection][3][4]4.3}{[1][5][]5}{}{}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Multi-Trajectory Batch Parallelism}{5}{subsection.4.4}\protected@file@percent }
-\newlabel{subsec:batch-parallelism}{{4.4}{5}{Multi-Trajectory Batch Parallelism}{subsection.4.4}{}}
-\newlabel{subsec:batch-parallelism@cref}{{[subsection][4][4]4.4}{[1][5][]5}{}{}{}}
 \citation{triton}
 \citation{nvidia2022hopper}
-\citation{he2020downhole-tractor,chawla2024tractor-glide}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Precision dimensions exposed by the fused implementation.}}{6}{table.caption.7}\protected@file@percent }
+\newlabel{tab:precision-design}{{4}{6}{Precision dimensions exposed by the fused implementation}{table.caption.7}{}}
+\newlabel{tab:precision-design@cref}{{[table][4][]4}{[1][5][]6}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Multi-Trajectory Batch Parallelism}{6}{subsection.4.4}\protected@file@percent }
+\newlabel{subsec:batch-parallelism}{{4.4}{6}{Multi-Trajectory Batch Parallelism}{subsection.4.4}{}}
+\newlabel{subsec:batch-parallelism@cref}{{[subsection][4][4]4.4}{[1][6][]6}{}{}{}}
 \newlabel{eq:batch-address}{{7}{6}{Multi-Trajectory Batch Parallelism}{equation.7}{}}
-\newlabel{eq:batch-address@cref}{{[equation][7][]7}{[1][5][]6}{}{}{}}
+\newlabel{eq:batch-address@cref}{{[equation][7][]7}{[1][6][]6}{}{}{}}
 \newlabel{eq:batch-saturation}{{8}{6}{Multi-Trajectory Batch Parallelism}{equation.8}{}}
 \newlabel{eq:batch-saturation@cref}{{[equation][8][]8}{[1][6][]6}{}{}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Implementation Details}{6}{subsection.4.5}\protected@file@percent }
@@ -99,21 +104,10 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Accuracy and Precision Trade-offs}{6}{subsection.5.4}\protected@file@percent }
 \newlabel{subsec:precision-evaluation}{{5.4}{6}{Accuracy and Precision Trade-offs}{subsection.5.4}{}}
 \newlabel{subsec:precision-evaluation@cref}{{[subsection][4][5]5.4}{[1][6][]6}{}{}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Batch Scalability and Resource Saturation}{6}{subsection.5.5}\protected@file@percent }
-\newlabel{subsec:batch-evaluation}{{5.5}{6}{Batch Scalability and Resource Saturation}{subsection.5.5}{}}
-\newlabel{subsec:batch-evaluation@cref}{{[subsection][5][5]5.5}{[1][6][]6}{}{}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Ablation and Negative Results}{6}{subsection.5.6}\protected@file@percent }
-\newlabel{subsec:ablation}{{5.6}{6}{Ablation and Negative Results}{subsection.5.6}{}}
-\newlabel{subsec:ablation@cref}{{[subsection][6][5]5.6}{[1][6][]6}{}{}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Related Work}{6}{section.6}\protected@file@percent }
-\newlabel{sec:related-work}{{6}{6}{Related Work}{section.6}{}}
-\newlabel{sec:related-work@cref}{{[section][6][]6}{[1][6][]6}{}{}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Downhole Tractors and In-Pipe Robots}{6}{subsection.6.1}\protected@file@percent }
-\newlabel{subsec:related-downhole}{{6.1}{6}{Downhole Tractors and In-Pipe Robots}{subsection.6.1}{}}
-\newlabel{subsec:related-downhole@cref}{{[subsection][1][6]6.1}{[1][6][]6}{}{}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces End-to-end performance summary. The final manuscript will report means and variability over repeated runs.}}{6}{table.caption.6}\protected@file@percent }
-\newlabel{tab:end-to-end}{{3}{6}{End-to-end performance summary. The final manuscript will report means and variability over repeated runs}{table.caption.6}{}}
-\newlabel{tab:end-to-end@cref}{{[table][3][]3}{[1][6][]6}{}{}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces End-to-end performance summary. The final manuscript will report means and variability over repeated runs.}}{6}{table.caption.8}\protected@file@percent }
+\newlabel{tab:end-to-end}{{5}{6}{End-to-end performance summary. The final manuscript will report means and variability over repeated runs}{table.caption.8}{}}
+\newlabel{tab:end-to-end@cref}{{[table][5][]5}{[1][6][]6}{}{}{}}
+\citation{he2020downhole-tractor,chawla2024tractor-glide}
 \citation{huang2011gpu-kalman}
 \citation{ai2021gpu-kalman}
 \citation{liu2024fasttrack}
@@ -130,12 +124,18 @@
 \citation{haidar2018tensorcores}
 \citation{rubio2013precimonious}
 \citation{dai2025comp}
-\bibstyle{fcs}
-\bibdata{references}
-\bibcite{liu2025embodied-survey}{1}
-\bibcite{he2024legged-state}{2}
-\bibcite{ou2024leg-kilo}{3}
-\bibcite{embodied-ai-survey}{4}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Batch Scalability and Resource Saturation}{7}{subsection.5.5}\protected@file@percent }
+\newlabel{subsec:batch-evaluation}{{5.5}{7}{Batch Scalability and Resource Saturation}{subsection.5.5}{}}
+\newlabel{subsec:batch-evaluation@cref}{{[subsection][5][5]5.5}{[1][7][]7}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Ablation and Negative Results}{7}{subsection.5.6}\protected@file@percent }
+\newlabel{subsec:ablation}{{5.6}{7}{Ablation and Negative Results}{subsection.5.6}{}}
+\newlabel{subsec:ablation@cref}{{[subsection][6][5]5.6}{[1][7][]7}{}{}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Related Work}{7}{section.6}\protected@file@percent }
+\newlabel{sec:related-work}{{6}{7}{Related Work}{section.6}{}}
+\newlabel{sec:related-work@cref}{{[section][6][]6}{[1][7][]7}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Downhole Tractors and In-Pipe Robots}{7}{subsection.6.1}\protected@file@percent }
+\newlabel{subsec:related-downhole}{{6.1}{7}{Downhole Tractors and In-Pipe Robots}{subsection.6.1}{}}
+\newlabel{subsec:related-downhole@cref}{{[subsection][1][6]6.1}{[1][7][]7}{}{}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.2}GPU-Accelerated Kalman Filtering}{7}{subsection.6.2}\protected@file@percent }
 \newlabel{subsec:related-kalman}{{6.2}{7}{GPU-Accelerated Kalman Filtering}{subsection.6.2}{}}
 \newlabel{subsec:related-kalman@cref}{{[subsection][2][6]6.2}{[1][7][]7}{}{}{}}
@@ -148,6 +148,12 @@
 \@writefile{toc}{\contentsline {section}{\numberline {7}Conclusion}{7}{section.7}\protected@file@percent }
 \newlabel{sec:conclusion}{{7}{7}{Conclusion}{section.7}{}}
 \newlabel{sec:conclusion@cref}{{[section][7][]7}{[1][7][]7}{}{}{}}
+\bibstyle{fcs}
+\bibdata{references}
+\bibcite{liu2025embodied-survey}{1}
+\bibcite{he2024legged-state}{2}
+\bibcite{ou2024leg-kilo}{3}
+\bibcite{embodied-ai-survey}{4}
 \bibcite{bloesch2012}{5}
 \bibcite{cerberus2022}{6}
 \bibcite{isaacgym2021}{7}
@@ -170,4 +176,4 @@
 \bibcite{haidar2018tensorcores}{24}
 \bibcite{rubio2013precimonious}{25}
 \bibcite{dai2025comp}{26}
-\gdef \@abspage@last{8}
+\gdef \@abspage@last{9}

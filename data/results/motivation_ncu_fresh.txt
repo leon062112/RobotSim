@@ -1,0 +1,28 @@
+# Motivation 3.3 — fresh ncu corroboration of single-trajectory (single-block) underutilization
+# Device: NVIDIA H20 (Hopper sm_90, 78 SM, 2048 thr/SM, 65536 regs/SM)
+# Env this run: torch 2.8.0+cu128, triton 3.4.0 (paper-declared env: torch 2.11/triton 3.6)
+# Kernel: ekf_mega_kernel_p (v4 single-block fused fp32), captured via ncu --set full, N=4000
+#captured 2026-08-16
+Grid Size                         : 1
+Block Size / Threads              : 128  (= 4 warps)
+SMs hosting the block             : 1 of 78
+Achieved Occupancy                : 6.25 %   (4 of 64 warps on the active SM)
+Theoretical Occupancy             : 18.75 %  (limited by registers; 148 regs/thread -> 3 blocks/SM)
+  [archive env Triton3.6 reports 110 regs/thread -> 4 blocks/SM -> theoretical 25%]
+Waves Per Multiprocessor          : 0.00
+Achieved Active Warps Per SM      : 4.00
+Theoretical Active Warps Per SM   : 12.00
+Active Warps Per Scheduler        : 1.00
+Compute (SM) Throughput           : 0.24 %    [archive: 0.27 %]
+Memory Throughput                : 0.40 %
+DRAM Throughput                   : 0.00 %
+L1/TEX Cache Throughput           : 31.40 %
+L2 Cache Throughput               : 0.04 %
+
+# Wall-clock sweep (motivation_single_trajectory.py, N=166667, median of 7, CUDA events):
+#   B=1  : 672.06 ms  0.25M steps/s
+#   B=78 : 681.32 ms  19.08M steps/s   (ratio B78/B1 = 1.014; ~77 trajectories free)
+#   B=256: 1122.37 ms 38.01M steps/s   (peak)
+#   B=384: 1903.42 ms 33.62M steps/s   (register-limited saturation, throughput drops)
+# Conclusion (env-independent): single trajectory -> 1 block -> 1/78 SM, 4/64 warps,
+#   ~0.24-0.27% device SM throughput; B=78 costs ~1% extra wall time over B=1.
