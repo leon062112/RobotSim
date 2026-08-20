@@ -10,8 +10,8 @@
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,calc,fit,positioning,shapes.geometric}
 
-\title{Accelerating Latency-Bound EKF Fusion Positioning for Downhole Traction Robots via Kernel Fusion, Mixed Precision, and Multi-Trajectory Parallelism}
-\shorttitle{GPU Acceleration of Downhole Traction Robot Positioning}
+\title{TRIDENT: GPU-Accelerated EKF Positioning for Downhole Traction Robots}
+\shorttitle{TRIDENT: GPU-Accelerated EKF Positioning for Downhole Traction Robots}
 
 % TODO: Replace the author, affiliation, and correspondence placeholders.
 \author[1,+]{First~Author}
@@ -27,7 +27,7 @@
 }
 
 \begin{abstract}
-Extended Kalman filter (EKF)-based multi-sensor fusion is widely used to evaluate positioning algorithms for robots operating without reliable external positioning. In simulations of a downhole traction robot operating in a cased horizontal well, the estimator processes a long sensor sequence through tightly dependent SINS propagation and EKF correction steps. Its small matrices and fine-grained operators produce a latency-bound GPU workload: a direct tensor implementation expands each filter step into hundreds of dependent kernels and leaves most streaming multiprocessors idle. This paper presents a three-axis GPU acceleration framework for this workload. First, a Triton whole-scan kernel fuses the complete recursive trajectory, retains the recurrent navigation and filter state on chip, and replaces the general innovation solve with an analytical small-matrix inverse. Second, component-aware specialization separates sensor input, recurrent computation, and dot-product precision to control long-horizon numerical error while reducing instruction and storage costs. Third, independent simulation trajectories are mapped to CUDA blocks to expose batch-level parallelism without changing the temporal order within each filter. On a Hopper-class GPU, whole-scan fusion in fp64 provides an $8.8\times$ speedup over the CPU reference, while the fused fp32 implementation reaches approximately $2.43\times10^{5}$ filter steps per second, corresponding to a $130\times$ single-trajectory speedup with sub-millimeter deviation from the fp64 trajectory. Multi-trajectory execution scales aggregate throughput to $4.63\times10^{7}$ filter steps per second before register-limited saturation. These results show how execution granularity, numerical representation, and outer-loop parallelism can be coordinated for long-horizon recursive state-estimation simulation.
+Extended Kalman filter (EKF)-based multi-sensor fusion is widely used to evaluate positioning algorithms for robots operating without reliable external positioning. In simulations of a downhole traction robot operating in a cased horizontal well, the estimator processes a long sensor sequence through tightly dependent SINS propagation and EKF correction steps. Its small matrices and fine-grained operators produce a latency-bound GPU workload: a direct tensor implementation expands each filter step into hundreds of dependent kernels and leaves most streaming multiprocessors idle. This paper presents \textsc{Trident}, a three-axis GPU acceleration framework for this workload. First, a Triton whole-scan kernel fuses the complete recursive trajectory, retains the recurrent navigation and filter state on chip, and replaces the general innovation solve with an analytical small-matrix inverse. Second, component-aware specialization separates sensor input, recurrent computation, and dot-product precision to control long-horizon numerical error while reducing instruction and storage costs. Third, independent simulation trajectories are mapped to CUDA blocks to expose batch-level parallelism without changing the temporal order within each filter. On a Hopper-class GPU, whole-scan fusion in fp64 provides an $8.8\times$ speedup over the CPU reference, while the fused fp32 implementation reaches approximately $2.43\times10^{5}$ filter steps per second, corresponding to a $130\times$ single-trajectory speedup with sub-millimeter deviation from the fp64 trajectory. Multi-trajectory execution scales aggregate throughput to $4.63\times10^{7}$ filter steps per second before register-limited saturation. These results show how execution granularity, numerical representation, and outer-loop parallelism can be coordinated for long-horizon recursive state-estimation simulation.
 \end{abstract}
 \keywords{}
 \ExplSyntaxOn
@@ -47,14 +47,14 @@ Downhole traction robots provide a concrete and demanding instance of this broad
 
 \begin{figure}[!t]
   \centering
-  \includegraphics[width=\linewidth]{figures/downhole_tractor.png}
+  \includegraphics[width=\linewidth]{figures/simple.pdf}
   \caption{Schematic of a downhole traction robot conveying a toolstring into the horizontal section of an oil or gas well.}
   \label{fig:downhole-tractor}
 \end{figure}
 
 The resulting estimator has an execution pattern that differs from the large, throughput-oriented matrix workloads commonly used to showcase GPUs. Each update is a small numerical operation embedded in a long dependency chain, and a direct tensor implementation fragments the computation into many fine-grained device operations. Repeated launches, synchronization, and movement of recurrent state can dominate arithmetic, leaving much of the accelerator underutilized and causing a straightforward GPU port to underperform a CPU implementation. These characteristics motivate an implementation study centered on launch overhead, on-chip state locality, numerical precision, and independent trajectories available at the simulation level.
 
-We develop a GPU acceleration framework for this workload. Operator fusion removes fragmented execution and intermediate-state traffic; component-aware precision matches numerical requirements to GPU instruction throughput; and multi-trajectory parallelism fills otherwise idle SMs while preserving the temporal dependency within each trajectory. The main contributions are as follows:
+We develop \textsc{Trident}, a GPU acceleration framework for this workload. Operator fusion removes fragmented execution and intermediate-state traffic; component-aware precision matches numerical requirements to GPU instruction throughput; and multi-trajectory parallelism fills otherwise idle SMs while preserving the temporal dependency within each trajectory. The main contributions are as follows:
 
 \begin{itemize}
   \item We diagnose the execution behavior of SINS/EKF simulation and develop a progressive fusion path culminating in a single Triton mega-kernel that keeps the recurrent filter state on chip and executes a complete trajectory with minimal device dispatch.
@@ -62,7 +62,7 @@ We develop a GPU acceleration framework for this workload. Operator fusion remov
   \item We map independent trajectories to CUDA blocks and derive a scaling model that relates batch throughput to accelerator occupancy and register pressure, enabling high-throughput Monte Carlo and parameter-sweep simulation.
 \end{itemize}
 
-The remaining sections of this paper are organized as follows. \Cref{sec:background} introduces the positioning model and its computational structure. \Cref{sec:motivation} presents the profiling evidence and optimization requirements. \Cref{sec:methodology} describes the acceleration framework. \Cref{sec:evaluation} evaluates performance, accuracy, and scalability. \Cref{sec:related-work} discusses related work, and \Cref{sec:conclusion} concludes the paper.
+The remaining sections of this paper are organized as follows. \Cref{sec:background} introduces the positioning model and its computational structure. \Cref{sec:motivation} presents the profiling evidence and optimization requirements. \Cref{sec:methodology} describes the \textsc{Trident} framework. \Cref{sec:evaluation} evaluates performance, accuracy, and scalability. \Cref{sec:related-work} discusses related work, and \Cref{sec:conclusion} concludes the paper.
 
 \section{Background}
 \label{sec:background}
@@ -251,7 +251,7 @@ Simulation campaigns naturally provide an outer parallel dimension. Different no
 \subsection{Overview}
 \label{subsec:method-overview}
 
-The proposed framework treats one positioning trajectory as a recursive scan over $N$ sensor samples. At every step, the scan reads the current IMU and odometer measurements, propagates the nominal SINS state, performs the EKF prediction and correction, feeds the estimated error back to the nominal state, and carries the resulting state and covariance to the next step. For a batch of $B$ simulations, the input and output tensors contain an additional trajectory dimension, while the recursive state of each trajectory remains private.
+\textsc{Trident} treats one positioning trajectory as a recursive scan over $N$ sensor samples. At every step, the scan reads the current IMU and odometer measurements, propagates the nominal SINS state, performs the EKF prediction and correction, feeds the estimated error back to the nominal state, and carries the resulting state and covariance to the next step. For a batch of $B$ simulations, the input and output tensors contain an additional trajectory dimension, while the recursive state of each trajectory remains private.
 
 As summarized in \Cref{fig:design-overview}, we optimize this scan along three complementary axes. Whole-scan kernel fusion changes the execution granularity and keeps recurrent data close to the arithmetic that consumes it. Component-aware precision specialization changes the representation of sensor data, recurrent state, and matrix products according to their numerical roles. Multi-trajectory parallelism maps independent scans to different CUDA blocks and thereby supplies work across the device. Fusion primarily reduces dispatch and data-movement latency, precision specialization reduces critical-path instruction and storage cost, and trajectory mapping improves device-level utilization. Their mechanisms do not require a change to the SINS/EKF equations and can therefore be composed in one implementation.
 
@@ -553,7 +553,7 @@ Automatic precision selection provides a complementary approach. Precimonious se
 \section{Conclusion}
 \label{sec:conclusion}
 
-This paper presents a three-axis approach to GPU acceleration of SINS/EKF fusion positioning for downhole traction robots. The central observation is that the workload is limited by launch latency, sequential dependency, and idle SMs rather than by arithmetic throughput. Whole-scan kernel fusion removes fragmented execution, component-aware precision matches numerical requirements to GPU hardware, and multi-trajectory mapping exposes the independent work needed to fill the device. The resulting implementation changes a naive GPU slowdown into substantial single-trajectory acceleration and scalable batch throughput while preserving positioning accuracy. Future work will evaluate the framework across additional state-estimation models, trajectory distributions, and GPU architectures, and will investigate structure-aware reductions in covariance computation.
+This paper presents \textsc{Trident}, a three-axis approach to GPU acceleration of SINS/EKF fusion positioning for downhole traction robots. The central observation is that the workload is limited by launch latency, sequential dependency, and idle SMs rather than by arithmetic throughput. Whole-scan kernel fusion removes fragmented execution, component-aware precision matches numerical requirements to GPU hardware, and multi-trajectory mapping exposes the independent work needed to fill the device. The resulting implementation changes a naive GPU slowdown into substantial single-trajectory acceleration and scalable batch throughput while preserving positioning accuracy. Future work will evaluate \textsc{Trident} across additional state-estimation models, trajectory distributions, and GPU architectures, and will investigate structure-aware reductions in covariance computation.
 
 \fontsize{8.5pt}{10pt}\selectfont
 

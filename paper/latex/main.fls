@@ -1,4 +1,4 @@
-PWD /Users/denghaodong/Code/RobotSim/paper/latex
+PWD /Users/denghaodong/code/FlashinferSim/paper/latex
 INPUT /usr/local/texlive/2026/texmf.cnf
 INPUT /usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf
 INPUT /usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt
@@ -435,6 +435,7 @@ INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/newtx/ts1ntxtlf.fd
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/newtx/ts1ntxtlf.fd
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/newtx/ts1ntxtlf.fd
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/tex-gyre/ts1-qtmb.tfm
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Regular-tlf-sc-ot1.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Bold-tlf-ot1.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Regular-tlf-ot1.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Regular-tlf-ot1.tfm
@@ -507,6 +508,7 @@ INPUT /usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/tex-gyre/q-ts1.enc
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/vf/public/newtx/ntx-Bold-tlf-ot1.vf
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/txbmiaX.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Bold-tlf-ot1r.tfm
+INPUT /usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/newtx/ntx-ot1-tlf-pc.enc
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/vf/public/newtx/ntx-Regular-tlf-ot1.vf
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/vf/public/newtx/ntxmi.vf
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/NewTXMI.tfm
@@ -526,11 +528,11 @@ INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/txex-bar.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/vf/public/newtx/ntx-Regular-tlf-ot1.vf
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/txmiaX.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Regular-tlf-ot1r.tfm
-INPUT ./figures/downhole_tractor.png
-INPUT ./figures/downhole_tractor.png
-INPUT ./figures/downhole_tractor.png
-INPUT ./figures/downhole_tractor.png
-INPUT ./figures/downhole_tractor.png
+INPUT ./figures/simple.pdf
+INPUT ./figures/simple.pdf
+INPUT ./figures/simple.pdf
+INPUT ./figures/simple.pdf
+INPUT ./figures/simple.pdf
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Bold-tlf-ot1.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/newtx/ntx-Bold-tlf-ot1.tfm
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/vf/public/newtx/ntx-Regular-tlf-ot1.vf
