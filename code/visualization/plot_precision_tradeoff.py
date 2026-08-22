@@ -51,82 +51,123 @@ def sci(v):
 
 
 # -----------------------------
-# Single combo figure:
-#   bars  (left  log) = throughput
-#   lines (right log) = relative deviation dX / dZ (unitless)
+# Single-panel combo figure:
+#   bars  (left  log, lower band) = throughput
+#   lines (right log, upper band) = relative deviation dX / dZ
+# The bars are anchored to the lower part of the panel (headroom up to 1e7),
+# and the deviation lines are drawn in a separate upper band via a blended
+# transform (x = data, y = axes fraction).  The two occupy disjoint vertical
+# regions of the same axes, so the line sits above the bars and never
+# overlaps them.  All text is black.
 # -----------------------------
-fig, ax = plt.subplots(figsize=(11.4, 6.1), dpi=180)
+INK = 'black'
 
+# upper band (axes fraction) reserved for the deviation lines
+BAND_BOTTOM, BAND_TOP = 0.56, 0.965
+DEV_LO, DEV_HI = 1e-6, 1e3      # deviation range mapped into the band
+
+
+def dev_to_screen(v):
+    """Map a deviation value (floored) to an axes-fraction y in the band."""
+    vv = _v(v)
+    t = (np.log10(vv) - np.log10(DEV_LO)) / (np.log10(DEV_HI) - np.log10(DEV_LO))
+    return BAND_BOTTOM + np.clip(t, 0.0, 1.0) * (BAND_TOP - BAND_BOTTOM)
+
+
+fig, ax = plt.subplots(figsize=(11.0, 6.2), dpi=180)
+tfm_dev = blended_transform_factory(ax.transData, ax.transAxes)
+
+# ---------- bars (lower region) ----------
 bar_colors = [BLUE_LIGHT, BLUE, BLUE, BLUE, BLUE, BLUE]
 ax.bar(pos, throughput, width=0.62, color=bar_colors,
-       edgecolor='black', linewidth=0.5, zorder=2,
-       label='throughput (bars, left)')
+       edgecolor=INK, linewidth=0.5, zorder=2, label='throughput (bar)')
 ax.set_yscale('log')
-ax.set_ylim(1e4, 4e5)
-ax.set_ylabel('Throughput (filter steps/s, log)', fontsize=11, color=BLUE)
-ax.tick_params(axis='y', colors=BLUE)
+ax.set_ylim(1e4, 1e7)           # headroom keeps bar tops below the line band
+ax.set_ylabel('Throughput (filter steps/s, log)', fontsize=11, color=INK)
+ax.tick_params(axis='y', colors=INK)
 ax.axhline(throughput[1], color=BLUE, linestyle='--', linewidth=1.1,
-           alpha=0.55, zorder=1)
-# label only the bars that carry information (fp64 slow, fp32 ref, tf32 slow);
-# the plateau trio (~250k) is annotated once to avoid top clutter
+           alpha=0.6, zorder=1)
 for i in (0, 1, 3):
     v = throughput[i]
-    ax.text(pos[i], v * 1.12, f'{v/1000:.0f}k', ha='center', fontsize=8.8,
-            color=BLUE, zorder=3)
-ax.text(5.0, throughput[1] * 1.12, 'plateau ≈ 250k', ha='center', fontsize=8.5,
-        color=BLUE, zorder=3)
+    ax.text(pos[i], v * 1.12, f'{v/1000:.0f}k', ha='center', va='bottom',
+            fontsize=8.8, color=INK, zorder=3)
+ax.text(5.0, throughput[1] * 1.12, 'plateau ≈ 250k', ha='center', va='bottom',
+        fontsize=8.6, color=INK, zorder=3)
 ratio = throughput[1] / throughput[0]
 ax.annotate(f'≈{ratio:.1f}×', xy=(0.5, np.sqrt(throughput[0] * throughput[1])),
             ha='center', va='center', fontsize=13, fontweight='bold',
-            color=RED, zorder=5)
+            color=INK, zorder=5)
 
-# --- relative deviation lines (right axis) ---
-ax2 = ax.twinx()
+# ---------- deviation lines (upper band, blended transform) ----------
 p_dev = pos[1:]
-dXv = np.array([_v(v) for v in dX[1:]])
-dZv = np.array([_v(v) for v in dZ[1:]])
-ax2.plot(p_dev, dXv, '-o', color=RED, linewidth=2.2, markersize=8,
-         label=r'rel. $\Delta X$ (line, right)', zorder=6)
-ax2.plot(p_dev, dZv, '--s', color=AMBER, linewidth=2.0, markersize=7,
-         label=r'rel. $\Delta Z$ (line, right)', zorder=6)
-ax2.set_yscale('log')
-ax2.set_ylim(1e-6, 1e3)
-ax2.set_ylabel('Relative deviation vs fp32  (unitless, log)', fontsize=11)
-ax2.axhline(1e-3, color=GREEN, linestyle=':', linewidth=1.4, zorder=4)
-ax2.text(pos[-1] + 0.30, 1e-3, r'$10^{-3}$ (fp16-$\varepsilon$ grade)',
-         ha='left', va='center', fontsize=8.5, color=GREEN)
+sy_dX = [dev_to_screen(v) for v in dX[1:]]
+sy_dZ = [dev_to_screen(v) for v in dZ[1:]]
+line_dX, = ax.plot(p_dev, sy_dX, '-o', transform=tfm_dev, color=RED,
+                   linewidth=2.2, markersize=8,
+                   label=r'rel. $\Delta X$ (line)', zorder=5)
+line_dZ, = ax.plot(p_dev, sy_dZ, '--s', transform=tfm_dev, color=AMBER,
+                   linewidth=2.0, markersize=7,
+                   label=r'rel. $\Delta Z$ (line)', zorder=5)
+
+# right-axis tick gridlines + labels confined to the band (black)
+for v in [1e-6, 1e-3, 1e0, 1e2]:
+    y = dev_to_screen(v)
+    is_thr = abs(v - 1e-3) < 1e-12
+    ax.plot([0, 1], [y, y], transform=ax.transAxes,
+            color=(GREEN if is_thr else '#CCCCCC'),
+            linestyle=(':' if is_thr else '--'),
+            linewidth=(1.5 if is_thr else 0.8),
+            alpha=(0.9 if is_thr else 0.7),
+            zorder=(3 if is_thr else 1), clip_on=False)
+    lbl = r'$10^{-3}$ (fp16-$\varepsilon$)' if is_thr \
+        else f'$10^{{{int(round(np.log10(v)))}}}$'
+    ax.text(1.012, y, lbl, transform=ax.transAxes, ha='left', va='center',
+            fontsize=8.2, color=INK)
+ax.text(1.012, BAND_TOP + 0.006, 'rel. dev.',
+        transform=ax.transAxes, ha='left', va='bottom',
+        fontsize=8.6, color=INK)
+
+# deviation value labels (black) on the outer side of each marker
 for i in range(1, len(configs)):
-    if dX[i] > 1e-3:
-        ax2.text(pos[i] - 0.16, dX[i] * 1.8, sci(dX[i]), ha='center', fontsize=8,
-                 color=RED, zorder=7)
-    if dZ[i] > 1e-3:
-        ax2.text(pos[i] + 0.18, dZ[i] * 1.8, sci(dZ[i]), ha='center', fontsize=8,
-                 color=AMBER, zorder=7)
+    dx_ok = dX[i] > 1e-3
+    dz_ok = dZ[i] > 1e-3
+    if dx_ok:
+        va = 'bottom' if (not dz_ok or dX[i] >= dZ[i]) else 'top'
+        off = +0.028 if va == 'bottom' else -0.028
+        ax.text(pos[i], dev_to_screen(dX[i]) + off, sci(dX[i]),
+                transform=tfm_dev, ha='center', va=va, fontsize=8,
+                color=INK, zorder=7)
+    if dz_ok:
+        va = 'bottom' if (not dx_ok or dZ[i] >= dX[i]) else 'top'
+        off = +0.028 if va == 'bottom' else -0.028
+        ax.text(pos[i], dev_to_screen(dZ[i]) + off, sci(dZ[i]),
+                transform=tfm_dev, ha='center', va=va, fontsize=8,
+                color=INK, zorder=7)
 
-ax2.set_zorder(ax.get_zorder() + 1)
-ax.patch.set_visible(False)
-
-# --- region divider + bottom brackets (free the top for the legend) ---
-ax.axvline(SEP, color=GREY, linestyle='-', linewidth=1.0, alpha=0.6, zorder=1)
-axt = blended_transform_factory(ax.transData, ax.transAxes)
-ax.text(0.5, -0.06, 'Global compute precision', ha='center', va='top',
-        fontsize=10.5, fontweight='bold', color='#444444', transform=axt)
-ax.text(4.5, -0.06, 'Component lowered below fp32', ha='center', va='top',
-        fontsize=10.5, fontweight='bold', color='#444444', transform=axt)
-
+# ---------- shared x axis + region divider ----------
+ax.axvline(SEP, color=GREY, linestyle='-', linewidth=1.0, alpha=0.7, zorder=1)
 ax.set_xticks(pos)
 ax.set_xticklabels(labels, fontsize=9.5)
-ax.set_xlim(-0.6, pos[-1] + 0.7)
+ax.set_xlim(-0.6, pos[-1] + 1.1)
 ax.grid(axis='y', which='major', linestyle='--', alpha=0.25, zorder=0)
 
-# --- legend, upper left ---
-h1, l1 = ax.get_legend_handles_labels()
-h2, l2 = ax2.get_legend_handles_labels()
-ax.legend(h1 + h2, l1 + l2, frameon=True, fancybox=False, edgecolor='#BBBBBB',
+axt = blended_transform_factory(ax.transData, ax.transAxes)
+ax.text(0.5, -0.105, 'Global compute precision', ha='center', va='top',
+        fontsize=10.5, fontweight='bold', color=INK, transform=axt)
+ax.text(4.5, -0.105, 'Component lowered below fp32', ha='center', va='top',
+        fontsize=10.5, fontweight='bold', color=INK, transform=axt)
+
+# ---------- legend ----------
+bar_handle = plt.Rectangle((0, 0), 1, 1, facecolor=BLUE, edgecolor=INK,
+                           linewidth=0.5)
+ax.legend([bar_handle, line_dX, line_dZ],
+          ['throughput (bar)', r'rel. $\Delta X$ (line)', r'rel. $\Delta Z$ (line)'],
+          frameon=True, fancybox=False, edgecolor='#BBBBBB',
           loc='upper left', fontsize=9)
 
-fig.suptitle('Precision trade-off in the fused SINS/EKF scan', fontsize=14, y=0.99)
-fig.tight_layout(rect=[0, 0.12, 1, 0.96])
+fig.suptitle('Precision trade-off in the fused SINS/EKF scan',
+             fontsize=14, y=0.98, color=INK)
+fig.tight_layout(rect=[0, 0.02, 0.91, 0.95])
 fig.savefig(FIGURE_DIR / 'precision_tradeoff.pdf', bbox_inches='tight')
 fig.savefig(FIGURE_DIR / 'precision_tradeoff.png', bbox_inches='tight', dpi=180)
 plt.close(fig)

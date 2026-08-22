@@ -421,7 +421,7 @@ Two transformations make the fused kernel static and self-contained. First, the 
 
 Uniform precision assigns the same cost and error behavior to values with different numerical roles. In this workload, sensor samples are noisy external inputs, whereas position, velocity, attitude, and covariance are recurrent quantities whose rounding errors can accumulate over the full trajectory. Small matrix products introduce a third choice because TensorFloat-32 changes the multiplication path independently of the storage type. We therefore separate input precision, recurrent computation precision, and dot-product precision.
 
-The kernel exposes three compile-time parameters. $\mathit{DT}_{\mathrm{IO}}$ controls the precision used when loading IMU and odometer samples. The samples are immediately converted to the internal type $\mathit{DT}$, which is used for quaternion normalization, SINS integration, EKF state propagation, covariance update, and feedback. The parameter $\mathit{IP}$ selects the input mode of Triton dot products, allowing IEEE arithmetic and TensorFloat-32 paths to be evaluated without changing the surrounding kernel. All three parameters are declared as compile-time constants, so every combination generates a specialized kernel and introduces no precision-selection branch in the recursive loop.
+The kernel exposes three compile-time parameters. $\mathit{DT}_{\mathrm{IO}}$ controls the precision used when loading IMU and odometer samples. The samples are immediately converted to the internal type $\mathit{DT}$, which is used for quaternion normalization, SINS integration, EKF state propagation, covariance update, and feedback. The parameter $\mathit{IP}$ selects the input mode of Triton dot products, allowing IEEE arithmetic and TensorFloat-32 paths to be evaluated without changing the surrounding kernel. All three parameters are declared as compile-time constants, so every combination generates a specialized kernel and introduces no precision-selection branch in the recursive loop. A precision plan is therefore a triple $P=(\mathit{DT}_{\mathrm{IO}},\mathit{DT},\mathit{IP})$, and the search space is the Cartesian product of the candidate sets listed in \Cref{tab:precision-design}.
 
 \begin{table}[!t]
   \centering
@@ -439,7 +439,51 @@ The kernel exposes three compile-time parameters. $\mathit{DT}_{\mathrm{IO}}$ co
   \end{tabular}
 \end{table}
 
-Candidate configurations are screened over the complete trajectory instead of isolated filter steps. A configuration is considered numerically acceptable when its accumulated state deviation remains small relative to both the fp64 reference and the positioning error caused by the simulated sensing and motion models. This policy captures failures that appear only after repeated integration or covariance propagation. It also keeps hardware behavior separate from numerical acceptance: reduced storage, reduced arithmetic precision, and Tensor Core execution are measured as distinct choices rather than being grouped under a single mixed-precision label.
+Candidate configurations are screened over the complete trajectory instead of isolated filter steps. For a plan $P$, let $\mathbf{x}^{P}$ denote the trajectory it produces and $\mathbf{x}^{\mathrm{ref}}$ the CPU fp64 reference. The precision-induced deviation $\delta_{P}=\mathrm{RMSE}(\mathbf{x}^{P},\mathbf{x}^{\mathrm{ref}})$ accumulates over the $N$ steps and is required to stay bounded as the horizon grows, so that failures appearing only after repeated integration or covariance propagation are caught rather than hidden in a single-step check. Let $\varepsilon_{\mathrm{model}}=\mathrm{RMSE}(\mathbf{x}^{\mathrm{ref}},\mathbf{x}^{\mathrm{truth}})$ denote the positioning error of the fp64 reference itself, which no precision choice can remove. A plan is numerically acceptable when
+\begin{equation}
+  \delta_{P}\le\alpha\,\varepsilon_{\mathrm{model}},
+  \label{eq:precision-accept}
+\end{equation}
+i.e., the deviation introduced by lowering precision stays below the irreducible model error. This keeps hardware behavior separate from numerical acceptance: reduced storage ($\mathit{DT}_{\mathrm{IO}}$), reduced arithmetic precision ($\mathit{DT}$), and Tensor Core execution ($\mathit{IP}$) are measured as distinct choices rather than grouped under a single mixed-precision label. Among the plans satisfying \Cref{eq:precision-accept}, the one with the lowest critical-path latency $\tau_{P}$ is selected, with register occupancy $r_{P}$ as a tie-break; the full accepted set is retained as a precision--latency Pareto front and reported in \Cref{subsec:precision-evaluation}. \Cref{alg:precision-selection} formalizes this two-criterion procedure.
+
+\begin{algorithm}[!t]
+  \caption{Component-Aware Precision Plan Selection}
+  \label{alg:precision-selection}
+  \begin{algorithmic}[1]
+    \Require
+      candidate sets $\Pi_{\mathrm{IO}},\Pi_{\mathrm{R}},\Pi_{\mathrm{dot}}$;
+      sensor stream $\mathbf{Z}_{0:N-1}$;
+      fp64 reference trajectory $\mathbf{x}^{\mathrm{ref}}$;
+      model error $\varepsilon_{\mathrm{model}}$;
+      acceptance ratio $\alpha$
+    \Ensure
+      selected plan
+      $P^{\star}=(\mathit{DT}_{\mathrm{IO}}^{\star},\mathit{DT}^{\star},\mathit{IP}^{\star})$
+      and Pareto front $\mathcal{F}$
+    \State $\mathcal{C} \gets \Pi_{\mathrm{IO}} \times \Pi_{\mathrm{R}} \times \Pi_{\mathrm{dot}}$
+      \Comment{enumerate component-wise candidates}
+    \State $\mathcal{R} \gets \emptyset$
+      \Comment{records $(P,\delta_{P},\tau_{P},r_{P})$}
+    \ForAll{$P=(\mathit{DT}_{\mathrm{IO}},\mathit{DT},\mathit{IP}) \in \mathcal{C}$}
+      \State $K_{P} \gets \textsc{Specialize}(\mathit{DT}_{\mathrm{IO}},\mathit{DT},\mathit{IP})$
+        \Comment{compile-time constants; no runtime branch}
+      \State $(\mathbf{x}^{P},\tau_{P},r_{P}) \gets \textsc{RunTrajectory}(K_{P},\mathbf{Z}_{0:N-1})$
+        \Comment{full $N$-step scan}
+      \State $\delta_{P} \gets \mathrm{RMSE}(\mathbf{x}^{P},\mathbf{x}^{\mathrm{ref}})$
+        \Comment{accumulated state deviation}
+      \If{$\delta_{P} \le \alpha\,\varepsilon_{\mathrm{model}}$
+            \textbf{and} $\delta_{P}$ is bounded over $N$}
+        \Comment{numerical acceptance, \Cref{eq:precision-accept}}
+        \State $\mathcal{R} \gets \mathcal{R}\cup\{(P,\delta_{P},\tau_{P},r_{P})\}$
+      \EndIf
+    \EndFor
+    \State $\mathcal{F} \gets \textsc{ParetoFront}(\mathcal{R};\ \text{minimize}\ \delta_{P},\ \text{minimize}\ \tau_{P})$
+    \State $P^{\star} \gets \arg\min_{(P,\cdot,\tau_{P},r_{P})\in\mathcal{R}} \tau_{P}$,
+      ties broken by smallest $r_{P}$
+      \Comment{fastest accepted plan}
+    \State \Return $P^{\star},\ \mathcal{F}$
+  \end{algorithmic}
+\end{algorithm}
 
 \subsection{Multi-Trajectory Batch Parallelism}
 \label{subsec:batch-parallelism}
