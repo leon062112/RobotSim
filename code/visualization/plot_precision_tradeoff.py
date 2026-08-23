@@ -1,244 +1,175 @@
-import json
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.transforms import blended_transform_factory
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
-from matplotlib.ticker import LogLocator, NullFormatter
-from matplotlib.transforms import blended_transform_factory
-
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
-RESULT_DIR = REPO_ROOT / "data" / "results"
-FIGURE_DIR = REPO_ROOT / "data" / "figures"
+FIGURE_DIR = REPO_ROOT / 'data' / 'figures'
 FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 
-plt.rcParams.update(
-    {
-        "font.family": "serif",
-        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
-        "mathtext.fontset": "stix",
-        "axes.unicode_minus": False,
-        "axes.linewidth": 0.8,
-        "font.size": 10.5,
-        "pdf.fonttype": 42,
-        "ps.fonttype": 42,
-    }
-)
+# Times-like serif to match a LaTeX pdflatex manuscript
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
+plt.rcParams['mathtext.fontset'] = 'stix'
+plt.rcParams['axes.unicode_minus'] = False
 
-BLUE = "#4C78A8"
-BLUE_LIGHT = "#B8C5D3"
-RED = "#D94F4F"
-AMBER = "#E57C12"
-GREEN = "#3A923A"
-GREY = "#666666"
-GRID = "#D9D9D9"
+# -----------------------------
+# Data: full 166,667-step trajectory
+#   - fp64 throughput from v4 run (v4_precision_full.json)
+#   - fp32 + the four sub-fp32 isolations from precision_isolation.json
+#   - dX/dZ are RMSE increase vs the all-fp32 baseline, in mm; converted to
+#     unitless relative deviation by the fp64 trajectory RMSE
+#     (X: 1017.8421 mm, Z: 8.26942 mm) -> values read as 1e-4, 1e-2, 1e2 ...
+# -----------------------------
+configs = ['fp64', 'fp32', 'io-fp16', 'dot-tf32', 'io-bf16', 'state-fp16']
+labels = ['fp64', 'fp32', 'I/O\nfp16', 'dot\nTF32', 'I/O\nbf16', 'state\nfp16']
+throughput = np.array([17090, 249619, 249785, 208076, 250142, 252808])  # steps/s
 
+RMSE_X_FP64 = 1017.8421   # mm
+RMSE_Z_FP64 = 8.26942     # mm
+dX_mm = np.array([np.nan, 0.0, 0.11, 4.82, 11.01, 280753.72])
+dZ_mm = np.array([np.nan, 0.0, 2.19, 0.31, 1005.84, 0.30])
+dX = np.abs(dX_mm) / RMSE_X_FP64
+dZ = np.abs(dZ_mm) / RMSE_Z_FP64
 
-def load_results():
-    with (RESULT_DIR / "v4_precision_full.json").open(encoding="utf-8") as stream:
-        full_precision = json.load(stream)
-    with (RESULT_DIR / "precision_isolation.json").open(encoding="utf-8") as stream:
-        isolation_rows = {row["combo"]: row for row in json.load(stream)}
+BLUE, BLUE_LIGHT = '#4C78A8', '#B9C7D6'
+RED, AMBER, GREEN, GREY = '#E45756', '#F58518', '#54A24B', '#888888'
 
-    fp32 = isolation_rows["baseline"]
-    return [
-        {
-            "label": "FP64",
-            "throughput": full_precision["fp64"]["throughput_steps_per_s"],
-            "rmse_x": full_precision["fp64"]["rmse_x_mm"],
-            "rmse_z": full_precision["fp64"]["rmse_z_mm"],
-        },
-        {
-            "label": "FP32",
-            "throughput": fp32["tput"],
-            "rmse_x": fp32["rmse_x"],
-            "rmse_z": fp32["rmse_z"],
-        },
-        {
-            "label": "FP16\nsensor\nI/O",
-            "throughput": isolation_rows["io-fp16"]["tput"],
-            "rmse_x": isolation_rows["io-fp16"]["rmse_x"],
-            "rmse_z": isolation_rows["io-fp16"]["rmse_z"],
-        },
-        {
-            "label": "TF32\ndot\nkernel",
-            "throughput": isolation_rows["dot-tf32"]["tput"],
-            "rmse_x": isolation_rows["dot-tf32"]["rmse_x"],
-            "rmse_z": isolation_rows["dot-tf32"]["rmse_z"],
-        },
-        {
-            "label": "FP16\nstate\nkernel",
-            "throughput": isolation_rows["state-fp16"]["tput"],
-            "rmse_x": isolation_rows["state-fp16"]["rmse_x"],
-            "rmse_z": isolation_rows["state-fp16"]["rmse_z"],
-        },
-    ]
+pos = np.array([0.0, 1.0, 3.0, 4.0, 5.0, 6.0])
+SEP = 2.0
+FLOOR = 1e-6
 
 
-def compact_rate(value):
-    return f"{value / 1000:.1f}k"
+def _v(v):
+    return FLOOR if (np.isnan(v) or v == 0.0) else v
 
 
-def scientific_label(value):
-    exponent = int(np.floor(np.log10(value)))
-    mantissa = value / 10**exponent
-    return rf"${mantissa:.1f}\times10^{{{exponent}}}$"
+def sci(v):
+    s = f'{v:.1e}'
+    m, e = s.split('e')
+    return f'{float(m):g}e{int(e)}'
 
 
-results = load_results()
-labels = [row["label"] for row in results]
-throughput = np.array([row["throughput"] for row in results])
-rmse_x = np.array([row["rmse_x"] for row in results])
-rmse_z = np.array([row["rmse_z"] for row in results])
+# -----------------------------
+# Single-panel combo figure:
+#   bars  (left  log, lower band) = throughput
+#   lines (right log, upper band) = relative deviation dX / dZ
+# The bars are anchored to the lower part of the panel (headroom up to 1e7),
+# and the deviation lines are drawn in a separate upper band via a blended
+# transform (x = data, y = axes fraction).  The two occupy disjoint vertical
+# regions of the same axes, so the line sits above the bars and never
+# overlaps them.  All text is black.
+# -----------------------------
+INK = 'black'
 
-# Use FP64 as the numerical reference so the plot reads as the deviation
-# introduced when precision is reduced. The zero reference is not plotted on
-# the logarithmic deviation axis.
-fp64_index = 0
-fp32_index = 1
-relative_dx = np.abs(rmse_x - rmse_x[fp64_index]) / rmse_x[fp64_index]
-relative_dz = np.abs(rmse_z - rmse_z[fp64_index]) / rmse_z[fp64_index]
-deviation_indices = np.array([1, 2, 3, 4])
+# upper band (axes fraction) reserved for the deviation lines
+BAND_BOTTOM, BAND_TOP = 0.56, 0.965
+DEV_LO, DEV_HI = 1e-6, 1e3      # deviation range mapped into the band
 
-fig, ax_perf = plt.subplots(figsize=(5.2, 5.0), dpi=180)
-ax_dev = ax_perf.twinx()
-x = np.arange(len(results))
 
-# Throughput bars use one visual channel; precision effects are overlaid as
-# unconnected points because the configurations are categorical alternatives.
-bar_colors = [BLUE_LIGHT] + [BLUE] * (len(results) - 1)
-bars = ax_perf.bar(
-    x,
-    throughput,
-    width=0.60,
-    color=bar_colors,
-    edgecolor="#333333",
-    linewidth=0.55,
-    zorder=2,
-)
-ax_perf.set_yscale("log")
-ax_perf.set_ylim(1e4, 4.4e5)
-ax_perf.set_ylabel("Throughput (filter steps/s)", color=BLUE)
-ax_perf.tick_params(axis="y", colors=BLUE)
-ax_perf.spines["left"].set_color(BLUE)
-ax_perf.spines["top"].set_visible(False)
-ax_perf.set_xticks(x, labels)
-ax_perf.tick_params(axis="x", length=0, pad=8)
-ax_perf.yaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1))
-ax_perf.yaxis.set_minor_formatter(NullFormatter())
-ax_perf.grid(axis="y", which="major", color=GRID, linewidth=0.7, zorder=0)
-ax_perf.axhline(throughput[fp32_index], color=BLUE, linestyle=(0, (4, 2)), linewidth=1.0, alpha=0.6)
+def dev_to_screen(v):
+    """Map a deviation value (floored) to an axes-fraction y in the band."""
+    vv = _v(v)
+    t = (np.log10(vv) - np.log10(DEV_LO)) / (np.log10(DEV_HI) - np.log10(DEV_LO))
+    return BAND_BOTTOM + np.clip(t, 0.0, 1.0) * (BAND_TOP - BAND_BOTTOM)
 
-for bar, value in zip(bars, throughput):
-    ax_perf.text(
-        bar.get_x() + bar.get_width() / 2,
-        value * 1.08,
-        compact_rate(value),
-        ha="center",
-        va="bottom",
-        fontsize=7.8,
-        color=BLUE,
-        zorder=5,
-    )
 
-speedup = throughput[fp32_index] / throughput[0]
-ax_perf.annotate(
-    "",
-    xy=(1, 5.0e4),
-    xytext=(0, 5.0e4),
-    arrowprops={"arrowstyle": "<->", "color": BLUE, "linewidth": 1.1},
-)
-ax_perf.text(0.5, 5.55e4, f"{speedup:.1f}x", ha="center", va="bottom", color=BLUE, fontweight="bold")
+fig, ax = plt.subplots(figsize=(11.0, 6.2), dpi=180)
+tfm_dev = blended_transform_factory(ax.transData, ax.transAxes)
 
-ax_dev.set_yscale("log")
-ax_dev.set_ylim(2e-7, 1.2e3)
-ax_dev.set_ylabel("Relative RMSE deviation from FP64", fontsize=9.3)
-ax_dev.spines["top"].set_visible(False)
-ax_dev.yaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1))
-ax_dev.yaxis.set_minor_formatter(NullFormatter())
-ax_dev.set_zorder(ax_perf.get_zorder() + 1)
-ax_dev.patch.set_visible(False)
+# ---------- bars (lower region) ----------
+bar_colors = [BLUE_LIGHT, BLUE, BLUE, BLUE, BLUE, BLUE]
+ax.bar(pos, throughput, width=0.62, color=bar_colors,
+       edgecolor=INK, linewidth=0.5, zorder=2, label='throughput (bar)')
+ax.set_yscale('log')
+ax.set_ylim(1e4, 1e7)           # headroom keeps bar tops below the line band
+ax.set_ylabel('Throughput (filter steps/s, log)', fontsize=11, color=INK)
+ax.tick_params(axis='y', colors=INK)
+ax.axhline(throughput[1], color=BLUE, linestyle='--', linewidth=1.1,
+           alpha=0.6, zorder=1)
+for i in (0, 1, 3):
+    v = throughput[i]
+    ax.text(pos[i], v * 1.12, f'{v/1000:.0f}k', ha='center', va='bottom',
+            fontsize=8.8, color=INK, zorder=3)
+ax.text(5.0, throughput[1] * 1.12, 'plateau ≈ 250k', ha='center', va='bottom',
+        fontsize=8.6, color=INK, zorder=3)
+ratio = throughput[1] / throughput[0]
+ax.annotate(f'≈{ratio:.1f}×', xy=(0.5, np.sqrt(throughput[0] * throughput[1])),
+            ha='center', va='center', fontsize=13, fontweight='bold',
+            color=INK, zorder=5)
 
-offset = 0.09
-dx_x = deviation_indices - offset
-dz_x = deviation_indices + offset
-dx_values = relative_dx[deviation_indices]
-dz_values = relative_dz[deviation_indices]
-ax_dev.scatter(dx_x, dx_values, s=58, marker="o", color=RED, edgecolor="white", linewidth=0.7, zorder=6)
-ax_dev.scatter(dz_x, dz_values, s=56, marker="s", color=AMBER, edgecolor="white", linewidth=0.7, zorder=6)
+# ---------- deviation lines (upper band, blended transform) ----------
+p_dev = pos[1:]
+sy_dX = [dev_to_screen(v) for v in dX[1:]]
+sy_dZ = [dev_to_screen(v) for v in dZ[1:]]
+line_dX, = ax.plot(p_dev, sy_dX, '-o', transform=tfm_dev, color=RED,
+                   linewidth=2.2, markersize=8,
+                   label=r'rel. $\Delta X$ (line)', zorder=5)
+line_dZ, = ax.plot(p_dev, sy_dZ, '--s', transform=tfm_dev, color=AMBER,
+                   linewidth=2.0, markersize=7,
+                   label=r'rel. $\Delta Z$ (line)', zorder=5)
 
-threshold = 1e-3
-ax_dev.axhspan(ax_dev.get_ylim()[0], threshold, color=GREEN, alpha=0.05, zorder=0)
-ax_dev.axhline(threshold, color=GREEN, linestyle=(0, (1.5, 2)), linewidth=1.2, zorder=3)
-threshold_trans = blended_transform_factory(ax_dev.transAxes, ax_dev.transData)
-ax_dev.text(
-    0.99,
-    threshold * 1.18,
-    r"fp16 epsilon ($10^{-3}$)",
-    transform=threshold_trans,
-    ha="right",
-    va="bottom",
-    fontsize=7.6,
-    color=GREEN,
-    bbox={"facecolor": "white", "edgecolor": "none", "pad": 1.0, "alpha": 0.88},
-)
+# right-axis tick gridlines + labels confined to the band (black)
+for v in [1e-6, 1e-3, 1e0, 1e2]:
+    y = dev_to_screen(v)
+    is_thr = abs(v - 1e-3) < 1e-12
+    ax.plot([0, 1], [y, y], transform=ax.transAxes,
+            color=(GREEN if is_thr else '#CCCCCC'),
+            linestyle=(':' if is_thr else '--'),
+            linewidth=(1.5 if is_thr else 0.8),
+            alpha=(0.9 if is_thr else 0.7),
+            zorder=(3 if is_thr else 1), clip_on=False)
+    lbl = r'$10^{-3}$ (fp16-$\varepsilon$)' if is_thr \
+        else f'$10^{{{int(round(np.log10(v)))}}}$'
+    ax.text(1.012, y, lbl, transform=ax.transAxes, ha='left', va='center',
+            fontsize=8.2, color=INK)
+ax.text(1.012, BAND_TOP + 0.006, 'rel. dev.',
+        transform=ax.transAxes, ha='left', va='bottom',
+        fontsize=8.6, color=INK)
 
-dx_offsets = [(-5, 7), (-5, 7), (-5, 7), (-5, 7)]
-dz_offsets = [(4, 7), (5, 7), (5, 7), (5, 7)]
-for point_x, value, text_offset in zip(dx_x, dx_values, dx_offsets):
-    ax_dev.annotate(
-        scientific_label(value),
-        (point_x, value),
-        xytext=text_offset,
-        textcoords="offset points",
-        ha="right",
-        va="bottom" if text_offset[1] > 0 else "top",
-        fontsize=7.2,
-        color=RED,
-    )
-for point_x, value, text_offset in zip(dz_x, dz_values, dz_offsets):
-    ax_dev.annotate(
-        scientific_label(value),
-        (point_x, value),
-        xytext=text_offset,
-        textcoords="offset points",
-        ha="left",
-        va="bottom",
-        fontsize=7.2,
-        color=AMBER,
-    )
+# deviation value labels (black) on the outer side of each marker
+for i in range(1, len(configs)):
+    dx_ok = dX[i] > 1e-3
+    dz_ok = dZ[i] > 1e-3
+    if dx_ok:
+        va = 'bottom' if (not dz_ok or dX[i] >= dZ[i]) else 'top'
+        off = +0.028 if va == 'bottom' else -0.028
+        ax.text(pos[i], dev_to_screen(dX[i]) + off, sci(dX[i]),
+                transform=tfm_dev, ha='center', va=va, fontsize=8,
+                color=INK, zorder=7)
+    if dz_ok:
+        va = 'bottom' if (not dx_ok or dZ[i] >= dX[i]) else 'top'
+        off = +0.028 if va == 'bottom' else -0.028
+        ax.text(pos[i], dev_to_screen(dZ[i]) + off, sci(dZ[i]),
+                transform=tfm_dev, ha='center', va=va, fontsize=8,
+                color=INK, zorder=7)
 
-ax_dev.text(
-    fp64_index,
-    3.0e-7,
-    "0 (reference)",
-    ha="center",
-    va="bottom",
-    fontsize=7.6,
-    color=GREY,
-)
+# ---------- shared x axis + region divider ----------
+ax.axvline(SEP, color=GREY, linestyle='-', linewidth=1.0, alpha=0.7, zorder=1)
+ax.set_xticks(pos)
+ax.set_xticklabels(labels, fontsize=9.5)
+ax.set_xlim(-0.6, pos[-1] + 1.1)
+ax.grid(axis='y', which='major', linestyle='--', alpha=0.25, zorder=0)
 
-legend_handles = [
-    Patch(facecolor=BLUE, edgecolor="#333333", linewidth=0.5, label="throughput"),
-    Line2D([0], [0], marker="o", linestyle="none", markerfacecolor=RED, markeredgecolor="white", markersize=7, label=r"rel. $\Delta X$"),
-    Line2D([0], [0], marker="s", linestyle="none", markerfacecolor=AMBER, markeredgecolor="white", markersize=7, label=r"rel. $\Delta Z$"),
-]
-ax_perf.legend(
-    handles=legend_handles,
-    loc="upper left",
-    ncols=3,
-    frameon=False,
-    fontsize=8.2,
-    handletextpad=0.5,
-    columnspacing=0.9,
-)
+axt = blended_transform_factory(ax.transData, ax.transAxes)
+ax.text(0.5, -0.105, 'Global compute precision', ha='center', va='top',
+        fontsize=10.5, fontweight='bold', color=INK, transform=axt)
+ax.text(4.5, -0.105, 'Component lowered below fp32', ha='center', va='top',
+        fontsize=10.5, fontweight='bold', color=INK, transform=axt)
 
-fig.subplots_adjust(left=0.16, right=0.82, top=0.96, bottom=0.23)
-fig.savefig(FIGURE_DIR / "precision_tradeoff.pdf", bbox_inches="tight", pad_inches=0.04)
-fig.savefig(FIGURE_DIR / "precision_tradeoff.png", bbox_inches="tight", pad_inches=0.04, dpi=180)
+# ---------- legend ----------
+bar_handle = plt.Rectangle((0, 0), 1, 1, facecolor=BLUE, edgecolor=INK,
+                           linewidth=0.5)
+ax.legend([bar_handle, line_dX, line_dZ],
+          ['throughput (bar)', r'rel. $\Delta X$ (line)', r'rel. $\Delta Z$ (line)'],
+          frameon=True, fancybox=False, edgecolor='#BBBBBB',
+          loc='upper left', fontsize=9)
+
+fig.suptitle('Precision trade-off in the fused SINS/EKF scan',
+             fontsize=14, y=0.98, color=INK)
+fig.tight_layout(rect=[0, 0.02, 0.91, 0.95])
+fig.savefig(FIGURE_DIR / 'precision_tradeoff.pdf', bbox_inches='tight')
+fig.savefig(FIGURE_DIR / 'precision_tradeoff.png', bbox_inches='tight', dpi=180)
 plt.close(fig)
-
-print(f"Saved: {FIGURE_DIR / 'precision_tradeoff.pdf'}")
-print(f"Saved: {FIGURE_DIR / 'precision_tradeoff.png'}")
+print(f'Saved: {FIGURE_DIR / "precision_tradeoff.pdf"}')
+print(f'Saved: {FIGURE_DIR / "precision_tradeoff.png"}')
