@@ -47,7 +47,7 @@ Downhole traction robots provide a concrete and demanding instance of this broad
 
 \begin{figure}[!t]
   \centering
-  \includegraphics[width=\linewidth]{figures/simple.pdf}
+  \includegraphics[width=\linewidth]{figures/1-intro-robot.pdf}
   \caption{Schematic of a downhole traction robot conveying a toolstring into the horizontal section of an oil or gas well.}
   \label{fig:downhole-tractor}
 \end{figure}
@@ -224,7 +224,7 @@ We additionally isolate one precision decision at a time over the complete 166,6
 
 \begin{figure}[!t]
   \centering
-  \includegraphics[width=\linewidth]{figures/precision_tradeoff.pdf}
+  \includegraphics[width=\linewidth]{figures/3-motivation-precision_tradeoff.pdf}
   \caption{Precision trade-off in the fused SINS/EKF scan over the full 166{,}667-step trajectory. Bars (lower log axis) report end-to-end throughput, and lines (upper band, log axis) report the relative X/Z positioning deviation against the all-fp32 reference. The $10^{-3}$ line marks an fp16-$\varepsilon$ accuracy grade: bfloat16 sensor input and fp16 recurrent storage cross it and are unsafe for the long-horizon filter, whereas fp16 sensor input and TF32 matrix products remain near it without reducing throughput.}
   \label{fig:precision-tradeoff}
 \end{figure}
@@ -258,185 +258,51 @@ Simulation campaigns naturally provide an outer parallel dimension. Different no
 \subsection{Overview}
 \label{subsec:method-overview}
 
-\textsc{Trident} treats one positioning trajectory as a recursive scan over $N$ sensor samples. At every step, the scan reads the current IMU and odometer measurements, propagates the nominal SINS state, performs the EKF prediction and correction, feeds the estimated error back to the nominal state, and carries the resulting state and covariance to the next step. For a batch of $B$ simulations, the input and output tensors contain an additional trajectory dimension, while the recursive state of each trajectory remains private.
+\textsc{Trident} models each positioning trajectory as a recursive scan over $N$ sensor samples. At step $k$, the scan reads the current IMU and odometer measurements, propagates the nominal SINS state, performs EKF prediction and correction, feeds the estimated error back to the nominal state, and carries the updated navigation state and covariance to step $k+1$. A batch of $B$ simulations adds an outer trajectory dimension to the input and output tensors; the recurrent state remains private to each trajectory.
 
-As summarized in \Cref{fig:design-overview}, we optimize this scan along three complementary axes. Whole-scan kernel fusion changes the execution granularity and keeps recurrent data close to the arithmetic that consumes it. Component-aware precision specialization changes the representation of sensor data, recurrent state, and matrix products according to their numerical roles. Multi-trajectory parallelism maps independent scans to different CUDA blocks and thereby supplies work across the device. Fusion primarily reduces dispatch and data-movement latency, precision specialization reduces critical-path instruction and storage cost, and trajectory mapping improves device-level utilization. Their mechanisms do not require a change to the SINS/EKF equations and can therefore be composed in one implementation.
+\Cref{fig:design-overview} summarizes three complementary optimizations. First, whole-scan fusion encloses the complete time loop in one kernel, retains recurrent state on chip, and specializes the small-matrix operations on the critical path. Second, component-aware precision specialization assigns representations according to numerical role and selects a compile-time precision plan under a trajectory-level error constraint. Third, multi-trajectory mapping assigns independent scans to separate CUDA blocks, exposing device-wide parallelism subject to register-residency limits. The three axes target different bottlenecks---dispatch and data movement, arithmetic and storage cost, and insufficient device-level parallelism---and can therefore be composed.
 
-All transformations preserve the ordering of propagation, measurement update, and feedback within a trajectory. We use the CPU fp64 implementation as the semantic reference and validate each transformation with state differences and axis-wise positioning RMSE. Batch implementations additionally compare repeated identical trajectories to detect unintended inter-block state sharing. These checks are part of the design process; the corresponding quantitative results are reported in \Cref{sec:evaluation}.
+These transformations preserve the SINS/EKF equations and the order of propagation, measurement update, and feedback within every trajectory. We use the CPU fp64 implementation as the semantic reference, compare complete output trajectories rather than isolated steps, and repeat identical trajectories across blocks to detect accidental state sharing. \Cref{sec:evaluation} reports the corresponding performance and accuracy results.
 
 \begin{figure}[!t]
   \centering
-  \begin{tikzpicture}[
-      font=\scriptsize,
-      input/.style={draw=black!65, rounded corners=2pt,
-        fill=black!3, align=center, text width=2.55cm,
-        minimum height=9mm, inner sep=2.5pt},
-      workload/.style={draw=black!65, rounded corners=2pt,
-        fill=black!3, align=center, text width=2.75cm,
-        minimum height=9mm, inner sep=2.5pt},
-      fusion/.style={draw=blue!45!black, rounded corners=2pt,
-        fill=blue!4, align=center, text width=5.25cm,
-        minimum height=10mm, inner sep=2.5pt},
-      precision/.style={draw=blue!60!black, rounded corners=2pt,
-        fill=blue!10, align=center, text width=5.25cm,
-        minimum height=10mm, inner sep=2.5pt},
-      parallel/.style={draw=blue!75!black, rounded corners=2pt,
-        fill=blue!18, align=center, text width=5.25cm,
-        minimum height=10mm, inner sep=2.5pt},
-      output/.style={draw=black!65, rounded corners=2pt,
-        fill=black!3, align=center, text width=5.25cm,
-        minimum height=10mm, inner sep=2.5pt},
-      arrow/.style={-{Latex[length=1.8mm]}, semithick, draw=black!70},
-      link/.style={-{Latex[length=1.6mm]}, semithick, draw=black!55},
-      bus/.style={semithick, draw=black!55}
-    ]
-    \node[input] (inputs) at (-1.75,0)
-      {\textbf{Simulation inputs}\\IMU, odometry, initial state};
-    \node[workload] (scan) at (1.65,0)
-      {\textbf{Recursive SINS/EKF scan}\\$B$ trajectories $\times$ $N$ ordered steps};
-    \draw[arrow] (inputs) -- (scan);
-
-    \node[fusion] (fusion) at (0,-1.55)
-      {\textbf{\Cref{subsec:kernel-fusion}: whole-scan kernel fusion}\\one Triton kernel; recurrent state retained on chip};
-    \node[precision] (precision) at (0,-3.00)
-      {\textbf{\Cref{subsec:mixed-precision}: component-aware precision}\\specialize $\mathit{DT}_{\mathrm{IO}}$, recurrent $\mathit{DT}$, and dot-product mode $\mathit{IP}$};
-    \node[parallel] (parallel) at (0,-4.45)
-      {\textbf{\Cref{subsec:batch-parallelism}: multi-trajectory parallelism}\\trajectory $b$ $\rightarrow$ CUDA block $b$ with private recurrent state};
-
-    \coordinate (forktop) at ($(scan.south)+(0,-3.5mm)$);
-    \coordinate (lefttop) at (-3.15,-0.75);
-    \coordinate (leftbottom) at (-3.15,-4.45);
-    \draw[bus] (scan.south) -- (forktop) -- (lefttop) -- (leftbottom);
-    \draw[link] (-3.15,-1.55) -- (fusion.west);
-    \draw[link] (-3.15,-3.00) -- (precision.west);
-    \draw[link] (-3.15,-4.45) -- (parallel.west);
-
-    \coordinate (righttop) at (3.15,-1.55);
-    \coordinate (rightbottom) at (3.15,-5.15);
-    \draw[bus] (fusion.east) -- (righttop);
-    \draw[bus] (precision.east) -- (3.15,-3.00);
-    \draw[bus] (parallel.east) -- (3.15,-4.45);
-    \draw[bus] (righttop) -- (rightbottom);
-
-    \node[output] (outputs) at (0,-5.95)
-      {\textbf{Accelerated trajectory outputs}\\position, velocity, attitude, and filter state};
-    \draw[arrow] (rightbottom) -- (0,-5.15) -- (outputs.north);
-  \end{tikzpicture}
-  \caption{Compact design overview. The recursive SINS/EKF workload is optimized through whole-scan kernel fusion, component-aware precision specialization, and multi-trajectory parallelism.}
+  \includegraphics[width=\linewidth]{figures/4-method-overview.pdf}
+  \caption{Overview of \textsc{Trident}. Kernel fusion retains recurrent state on chip, component-aware mixed precision selects numerically safe precision paths, and block-level trajectory mapping exposes device-wide parallelism.}
   \label{fig:design-overview}
 \end{figure}
 
 \subsection{From Fragmented Operators to a Fused Recursive Scan}
 \label{subsec:kernel-fusion}
 
-The fusion path has three stages that progressively enlarge the optimization scope. The first stage rewrites scalar tensor construction, host-visible scalar access, and dynamic concatenation as device-side tensor expressions. It also replaces the two possible observation shapes with one fixed three-dimensional representation. When the odometry consistency test rejects the displacement observation, its variance is set to a sufficiently large value, causing the corresponding Kalman gain to approach zero while retaining a static matrix shape. This stage produces a compile-friendly EKF step with fixed control flow and storage dimensions.
+\Cref{fig:fusion-path}(a) contrasts the eager and whole-scan fusion boundaries. In the eager implementation, one filter step expands into approximately 531 dependent kernels. Recurrent values therefore cross kernel boundaries and return to HBM hundreds of times per step, even though the next operation immediately consumes them.
 
-The second stage captures the fixed-shape step in a CUDA Graph and replays it for the sensor sequence. Graph replay reduces repeated host dispatch, but the device still executes the fine-grained kernels contained in the captured step and transfers recurrent values between them. We retain this stage as an intermediate design point because it separates host launch overhead from device-side fragmentation.
+We first regularize the step for static compilation. Scalar tensor construction, host-visible scalar access, and dynamic concatenation are replaced with device-side expressions. The two possible observation shapes use one fixed three-dimensional representation; when the odometry consistency test rejects a displacement observation, a large variance suppresses the corresponding Kalman gain without changing the matrix shape. CUDA Graph replay then removes repeated host dispatch, but the captured graph still contains the fine-grained kernels and their recurrent-state transfers. Whole-scan fusion removes this remaining boundary by placing all $N$ steps inside one Triton program. A single host launch enters the scan, and the loop preserves the original update order while reusing state across iterations.
 
-The final stage expresses the complete $N$-step scan as one Triton kernel. A single Triton program processes one trajectory and executes the time loop in program order. At iteration $k$, it loads only the current gyroscope, accelerometer, and odometer samples; updates the quaternion, velocity, and position; constructs the transition and observation operators; propagates the error state and covariance; and applies the EKF feedback. The position, velocity, quaternion, error state, and covariance remain program-local across iterations, eliminating intermediate tensors and recurrent-state round trips to global memory. Only the requested trajectory outputs are stored after each step.
-
-Two transformations make the fused kernel static and self-contained. First, the logical filter matrices are padded to $16\times16$ and accessed with masks, allowing a common tile layout for transition, covariance, observation, and gain products while retaining the original 15-state semantics. Second, the $3\times3$ innovation covariance is inverted through its adjugate and determinant inside the kernel. This avoids invoking a general solver on the critical path and permits graph capture and whole-scan fusion without a host synchronization point. The fused design preserves the unavoidable temporal order and uses locality to shorten its sequential critical path.
-
-% Figure 4 is temporarily disabled.
-\iffalse
 \begin{figure}[!t]
   \centering
-  \begin{tikzpicture}[
-      font=\scriptsize,
-      memory/.style={draw=black!60, rounded corners=2pt, fill=black!5,
-        align=center, text width=2.70cm, minimum height=8mm,
-        inner sep=2pt},
-      cache/.style={draw=black!55, rounded corners=2pt, fill=black!4,
-        align=center, text width=5.15cm, minimum height=7mm,
-        inner sep=2pt},
-      kernelbox/.style={draw=blue!75!black, very thick, rounded corners=2pt,
-        fill=blue!7, minimum width=6.75cm, minimum height=4.35cm},
-      op/.style={draw=blue!70!black, rounded corners=1pt, fill=white,
-        minimum width=13.5mm, minimum height=5.5mm, inner sep=1pt,
-        font=\tiny},
-      register/.style={draw=blue!80!black, rounded corners=2pt,
-        fill=blue!18, align=center, text width=5.70cm,
-        minimum height=8mm, inner sep=2pt},
-      execution/.style={draw=blue!55!black, rounded corners=2pt,
-        fill=blue!3, align=center, text width=5.70cm,
-        minimum height=7mm, inner sep=2pt},
-      benefit/.style={draw=black!50, rounded corners=2pt, fill=black!3,
-        align=left, text width=6.20cm, minimum height=15mm,
-        inner sep=2pt},
-      arrow/.style={-{Latex[length=1.7mm]}, semithick, draw=black!65},
-      fastarrow/.style={-{Latex[length=1.7mm]}, semithick, draw=blue!75!black},
-      storearrow/.style={-{Latex[length=1.7mm]}, semithick, draw=orange!85!black},
-      traffic/.style={{Latex[length=1.6mm]}-{Latex[length=1.6mm]},
-        semithick, draw=orange!85!black}
-    ]
-    % HBM and cache expose only streaming inputs and requested outputs.
-    \node[memory] (sensors) at (-1.68,3.84)
-      {HBM inputs\\IMU and odometer streams};
-    \node[memory] (outputs) at (1.68,3.84)
-      {HBM outputs\\requested trajectory states};
-    \node[cache] (cache) at (0,2.92)
-      {L2 / L1 cache: coalesced sensor loads and output stores};
-    \draw[arrow] (sensors.south) -- node[left, font=\tiny] {read} (cache.north west);
-    \draw[storearrow] (cache.north east) -- node[right, font=\tiny] {write} (outputs.south);
-
-    % The fused program occupies one CUDA block on an SM.
-    \node[kernelbox] (triton) at (0,0.25) {};
-    \node[font=\scriptsize\bfseries] at (0,2.08)
-      {One host launch $\rightarrow$ SM: Triton program / CUDA block $b$};
-    \node[op] (load) at (-2.05,1.30) {load sample $k$};
-    \node[op] (sins) at (0,1.30) {SINS update};
-    \node[op] (models) at (2.05,1.30) {$F,Q,H,R$};
-    \node[op] (predict) at (-2.05,0.48) {EKF predict};
-    \node[op] (inverse) at (0,0.48) {$3\times3$ inverse};
-    \node[op] (feedback) at (2.05,0.48) {update / feedback};
-    \draw[fastarrow] (load) -- (sins);
-    \draw[fastarrow] (sins) -- (models);
-    \draw[fastarrow] (models.south) -- (predict.north east);
-    \draw[fastarrow] (predict) -- (inverse);
-    \draw[fastarrow] (inverse) -- (feedback);
-    \draw[fastarrow] (feedback.east) -- (3.00,0.48) -- (3.00,1.72)
-      -- node[above, font=\tiny] {$k\leftarrow k+1$} (-2.05,1.72)
-      -- (load.north);
-
-    \node[register] (regs) at (0,-0.55)
-      {SM registers / program-local recurrent state:\\$\mathbf q,\mathbf v,\mathbf p,\mathbf x,\mathbf P$ and fixed $16\times16$ matrix tiles};
-    \node[execution] (ordered) at (0,-1.48)
-      {Program-order execution of all $N$ steps\\no intermediate kernel boundary or recurrent-state spill};
-
-    \draw[fastarrow] (cache.south west) -- node[left, font=\tiny, align=right]
-      {stream current\\sample} (load.north west);
-    \draw[storearrow] (feedback.north east) -- ++(0.22,0.36)
-      |- node[pos=0.78, above, font=\tiny] {requested store} (cache.south east);
-    \draw[fastarrow] (feedback.south) -- (regs.north east);
-    \draw[fastarrow] (regs) -- (ordered);
-
-    \node[font=\footnotesize\bfseries] at (0,-2.42)
-      {Why this mapping improves performance};
-    \node[benefit] at (0,-3.35)
-      {$\bullet$ one host launch and program-order synchronization\\
-       $\bullet$ recurrent navigation/EKF state reused in SM registers\\
-       $\bullet$ only sensor streams and requested outputs cross HBM\\
-       $\bullet$ analytical $3\times3$ inverse remains inside the fused program};
-  \end{tikzpicture}
-  \caption{Correspondence between the Triton whole-scan operator and the GPU memory hierarchy. Sensor samples and requested outputs are streamed through HBM and cache, while one CUDA block executes the ordered trajectory scan and retains recurrent navigation and EKF state in SM registers. This mapping reduces dispatch, synchronization, and global-memory traffic on the latency-bound critical path.}
+  \includegraphics[width=\linewidth]{figures/4-method-fusion.pdf}
+  \caption{Whole-scan fusion and its GPU mapping. (a) Fusion replaces hundreds of eager kernels per step with one Triton launch for the full trajectory. (b) The fused program streams sensor samples and requested outputs through HBM while retaining recurrent state in registers and mapping matrix and special-function operations to the corresponding SM execution units.}
   \label{fig:fusion-path}
 \end{figure}
-\fi
+
+\Cref{fig:fusion-path}(b) shows the resulting data path. At iteration $k$, the program streams only the current gyroscope, accelerometer, and odometer samples through L2 and the SM cache hierarchy. It performs SINS propagation, EKF prediction and correction, and feedback before advancing to $k+1$. Only the requested position and velocity outputs are written to global memory. The quaternion, position, velocity, error state, and covariance remain program-local, so the loop-carried dependency passes through the register file instead of intermediate global-memory tensors.
+
+Two in-kernel transformations make the loop static and self-contained. First, masked $16\times16$ tiles store the logical 15-state filter matrices, providing a common layout for transition, covariance, observation, and gain products. The compile-time dot-product mode lowers these products to either CUDA-core IEEE arithmetic or Tensor Core TF32 operations. Second, the kernel computes the inverse of the $3\times3$ innovation covariance from its adjugate and determinant, avoiding a general solver and its synchronization point. SINS transcendental functions, including sine, cosine, square root, and arctangent, follow the device special-function path. The mapping in \Cref{fig:fusion-path}(b) thus combines one fusion boundary, register-resident recurrence, and hardware-specific micro-operations to reduce dispatch, synchronization, and HBM traffic on the latency-bound critical path.
 
 \subsection{Component-Aware Precision Specialization}
 \label{subsec:mixed-precision}
 
-Uniform precision assigns the same cost and error behavior to values with different numerical roles. In this workload, sensor samples are noisy external inputs, whereas position, velocity, attitude, and covariance are recurrent quantities whose rounding errors can accumulate over the full trajectory. Small matrix products introduce a third choice because TensorFloat-32 changes the multiplication path independently of the storage type. We therefore separate input precision, recurrent computation precision, and dot-product precision.
+Uniform precision ignores the different numerical roles within the scan. Sensor samples are noisy, once-consumed inputs, whereas position, velocity, attitude, error state, and covariance recur across the complete trajectory and can accumulate rounding error. Small matrix products introduce a third choice because TensorFloat-32 (TF32) changes the multiplication path without changing the surrounding storage type. We therefore treat input storage, recurrent arithmetic, and dot-product mode as independent dimensions.
 
-The kernel exposes three compile-time parameters. $\mathit{DT}_{\mathrm{IO}}$ controls the precision used when loading IMU and odometer samples. The samples are immediately converted to the internal type $\mathit{DT}$, which is used for quaternion normalization, SINS integration, EKF state propagation, covariance update, and feedback. The parameter $\mathit{IP}$ selects the input mode of Triton dot products, allowing IEEE arithmetic and TensorFloat-32 paths to be evaluated without changing the surrounding kernel. All three parameters are declared as compile-time constants, so every combination generates a specialized kernel and introduces no precision-selection branch in the recursive loop. A precision plan is therefore a triple $P=(\mathit{DT}_{\mathrm{IO}},\mathit{DT},\mathit{IP})$, and the search space is the Cartesian product of the candidate sets listed in \Cref{tab:precision-design}.
+The fused kernel exposes these dimensions as three compile-time parameters. $\mathit{DT}_{\mathrm{IO}}$ specifies the stored type of IMU and odometer samples, which are converted on load to the internal arithmetic type $\mathit{DT}$. The latter governs quaternion normalization, SINS integration, EKF propagation, covariance update, and feedback. $\mathit{IP}$ selects the Triton dot-product mode, distinguishing IEEE and TF32 execution. Because all three parameters are compile-time constants, each combination produces a branch-free specialized kernel. We define a precision plan as $P=(\mathit{DT}_{\mathrm{IO}},\mathit{DT},\mathit{IP})$ over the candidate sets in \Cref{tab:precision-design}.
 
-\begin{table}[!t]
+\begin{table}[H]
   \centering
   \caption{Precision dimensions exposed by the fused implementation.}
   \label{tab:precision-design}
   \begin{tabular}{@{}lll@{}}
     \toprule
-    Component & Candidate & Treatment \\
+    Component & Candidates & Treatment \\
     \midrule
     Sensor input & fp16, bf16, fp32 & cast to $\mathit{DT}$ \\
     Recursive computation & fp32, fp64 & retain across steps \\
@@ -446,21 +312,25 @@ The kernel exposes three compile-time parameters. $\mathit{DT}_{\mathrm{IO}}$ co
   \end{tabular}
 \end{table}
 
-Candidate configurations are screened over the complete trajectory instead of isolated filter steps. For a plan $P$, let $\mathbf{x}^{P}$ denote the trajectory it produces and $\mathbf{x}^{\mathrm{ref}}$ the CPU fp64 reference. The precision-induced deviation $\delta_{P}=\mathrm{RMSE}(\mathbf{x}^{P},\mathbf{x}^{\mathrm{ref}})$ accumulates over the $N$ steps and is required to stay bounded as the horizon grows, so that failures appearing only after repeated integration or covariance propagation are caught rather than hidden in a single-step check. Let $\varepsilon_{\mathrm{model}}=\mathrm{RMSE}(\mathbf{x}^{\mathrm{ref}},\mathbf{x}^{\mathrm{truth}})$ denote the positioning error of the fp64 reference itself, which no precision choice can remove. A plan is numerically acceptable when
+We screen each plan over the complete trajectory rather than an isolated filter step. Let $\mathbf{p}^{P}_{0:N}$ be the position trajectory produced by plan $P$, and let $\mathbf{p}^{\mathrm{ref}}_{0:N}$ be the CPU fp64 trajectory. The precision-induced deviation is
+\(
+  \delta_{P}=\mathrm{RMSE}(\mathbf{p}^{P}_{0:N},\mathbf{p}^{\mathrm{ref}}_{0:N}).
+\)
+Evaluating all $N$ steps exposes errors that emerge only after repeated integration or covariance propagation. We separately define the irreducible model error as $\varepsilon_{\mathrm{model}}=\mathrm{RMSE}(\mathbf{p}^{\mathrm{ref}}_{0:N},\mathbf{p}^{\mathrm{truth}}_{0:N})$. For a dimensionless tolerance $\alpha$, plan $P$ is acceptable when
 \begin{equation}
   \delta_{P}\le\alpha\,\varepsilon_{\mathrm{model}},
   \label{eq:precision-accept}
 \end{equation}
-i.e., the deviation introduced by lowering precision stays below the irreducible model error. This keeps hardware behavior separate from numerical acceptance: reduced storage ($\mathit{DT}_{\mathrm{IO}}$), reduced arithmetic precision ($\mathit{DT}$), and Tensor Core execution ($\mathit{IP}$) are measured as distinct choices rather than grouped under a single mixed-precision label. Among the plans satisfying \Cref{eq:precision-accept}, the one with the lowest critical-path latency $\tau_{P}$ is selected, with register occupancy $r_{P}$ as a tie-break; the full accepted set is retained as a precision--latency Pareto front and reported in \Cref{subsec:precision-evaluation}. \Cref{alg:precision-selection} formalizes this two-criterion procedure.
+so that numerical error introduced by the precision plan remains small relative to the model error already present in the fp64 reference. This criterion separates numerical acceptance from hardware behavior: $\mathit{DT}_{\mathrm{IO}}$ changes input storage and bandwidth, $\mathit{DT}$ changes recurrent arithmetic and state representation, and $\mathit{IP}$ changes dot-product execution. Among the acceptable plans, we select the one with the lowest critical-path latency $\tau_{P}$, breaking ties by the smaller register footprint $r_{P}$. We also retain the nondominated precision--latency set for analysis in \Cref{subsec:precision-evaluation}. \Cref{alg:precision-selection} summarizes the procedure.
 
-\begin{algorithm}[!t]
+\begin{algorithm}[H]
   \caption{Component-Aware Precision Plan Selection}
   \label{alg:precision-selection}
   \begin{algorithmic}[1]
     \Require
       candidate sets $\Pi_{\mathrm{IO}},\Pi_{\mathrm{R}},\Pi_{\mathrm{dot}}$;
       sensor stream $\mathbf{Z}_{0:N-1}$;
-      fp64 reference trajectory $\mathbf{x}^{\mathrm{ref}}$;
+      fp64 position trajectory $\mathbf{p}^{\mathrm{ref}}_{0:N}$;
       model error $\varepsilon_{\mathrm{model}}$;
       acceptance ratio $\alpha$
     \Ensure
@@ -470,17 +340,16 @@ i.e., the deviation introduced by lowering precision stays below the irreducible
     \State $\mathcal{C} \gets \Pi_{\mathrm{IO}} \times \Pi_{\mathrm{R}} \times \Pi_{\mathrm{dot}}$
       \Comment{enumerate component-wise candidates}
     \State $\mathcal{R} \gets \emptyset$
-      \Comment{records $(P,\delta_{P},\tau_{P},r_{P})$}
+      \Comment{error, latency, and register footprint}
     \ForAll{$P=(\mathit{DT}_{\mathrm{IO}},\mathit{DT},\mathit{IP}) \in \mathcal{C}$}
       \State $K_{P} \gets \textsc{Specialize}(\mathit{DT}_{\mathrm{IO}},\mathit{DT},\mathit{IP})$
         \Comment{compile-time constants; no runtime branch}
-      \State $(\mathbf{x}^{P},\tau_{P},r_{P}) \gets \textsc{RunTrajectory}(K_{P},\mathbf{Z}_{0:N-1})$
+      \State $(\mathbf{p}^{P}_{0:N},\tau_{P},r_{P}) \gets \textsc{RunTrajectory}(K_{P},\mathbf{Z}_{0:N-1})$
         \Comment{full $N$-step scan}
-      \State $\delta_{P} \gets \mathrm{RMSE}(\mathbf{x}^{P},\mathbf{x}^{\mathrm{ref}})$
-        \Comment{accumulated state deviation}
-      \If{$\delta_{P} \le \alpha\,\varepsilon_{\mathrm{model}}$
-            \textbf{and} $\delta_{P}$ is bounded over $N$}
-        \Comment{numerical acceptance, \Cref{eq:precision-accept}}
+      \State $\delta_{P} \gets \mathrm{RMSE}(\mathbf{p}^{P}_{0:N},\mathbf{p}^{\mathrm{ref}}_{0:N})$
+        \Comment{trajectory-level deviation}
+      \If{$\delta_{P} \le \alpha\,\varepsilon_{\mathrm{model}}$}
+        \Comment{accept by \Cref{eq:precision-accept}}
         \State $\mathcal{R} \gets \mathcal{R}\cup\{(P,\delta_{P},\tau_{P},r_{P})\}$
       \EndIf
     \EndFor
@@ -495,28 +364,28 @@ i.e., the deviation introduced by lowering precision stays below the irreducible
 \subsection{Multi-Trajectory Batch Parallelism}
 \label{subsec:batch-parallelism}
 
-A fused scan for one trajectory occupies one CUDA block and offers little parallel work to the remaining SMs. Simulation campaigns, however, commonly evaluate multiple noise seeds, obstacle arrangements, or filter parameters. These trajectories have the same computational structure and share no recursive state. For a batch size $B$, we launch a one-dimensional grid of $B$ blocks and assign trajectory $b$ to program identifier $b$. Every input and output address is computed as
+A fused scan for one trajectory occupies one CUDA block, leaving most SMs without useful work. Simulation campaigns, however, naturally contain independent trajectories generated from different noise seeds, obstacle configurations, or filter parameters. Because these trajectories share the same computation but no recurrent state, they provide an outer parallel dimension without altering the sequential scan. For batch size $B$, we launch a one-dimensional grid of $B$ Triton programs and assign trajectory $b$ to program identifier $b$. Suppressing the innermost component offset, each input and output address has the form
 \begin{equation}
   \operatorname{addr}(b,k)=\operatorname{base}+b\,s_B+k\,s_N,
   \label{eq:batch-address}
 \end{equation}
-where $s_B$ and $s_N$ are the trajectory and time strides. Program-local SINS and EKF values are initialized independently for each block; no synchronization or communication is required between trajectories.
+where $s_B$ and $s_N$ are the trajectory and time strides. Each program initializes its SINS and EKF state independently, so trajectories require neither synchronization nor communication.
 
-The mapping also gives a simple resource-based scaling model. Let $S$ denote the number of SMs, $R_{\mathrm{SM}}$ the registers available per SM, and $R_{\mathrm{blk}}$ the register allocation of one trajectory block. Ignoring other limits, the maximum number of resident trajectory blocks per SM is
+This mapping yields a resource-based scaling model. Let $S$ be the number of SMs, $R_{\mathrm{SM}}$ the register capacity of one SM, and $R_{\mathrm{blk}}$ the register allocation of one trajectory block. When registers are the active residency constraint, the number of resident blocks per SM and the corresponding device-wide saturation batch are approximated by
 \begin{equation}
   C_{\mathrm{reg}}=\left\lfloor
   \frac{R_{\mathrm{SM}}}{R_{\mathrm{blk}}}\right\rfloor,
   \qquad B_{\mathrm{sat}}\approx S C_{\mathrm{reg}}.
   \label{eq:batch-saturation}
 \end{equation}
-For $B\leq S$, different trajectories can be placed on different SMs and aggregate throughput is expected to grow nearly linearly. For $S<B\leq B_{\mathrm{sat}}$, multiple blocks reside on an SM and increasingly compete for registers and execution resources. Beyond $B_{\mathrm{sat}}$, additional blocks execute in waves, so a larger batch need not improve instantaneous throughput. The model connects the algorithmic batch dimension to observable hardware limits and is tested with the batch-size sweep in \Cref{subsec:batch-evaluation}.
+This approximation omits architectural limits on blocks, warps, shared memory, and scheduling, and therefore serves as a scaling guide rather than an exact occupancy model. For $B\leq S$, trajectories can be distributed across distinct SMs and aggregate throughput should grow nearly linearly. For $S<B\leq B_{\mathrm{sat}}$, additional resident blocks increase contention for registers and execution units. Beyond $B_{\mathrm{sat}}$, blocks execute in waves, so increasing $B$ improves total work capacity but not instantaneous throughput. \Cref{subsec:batch-evaluation} tests these regimes with a batch-size sweep.
 
 \subsection{Implementation Details}
 \label{subsec:implementation-details}
 
-The complete fused scan is implemented as one \texttt{@triton.jit} kernel, with one Triton program assigned to each trajectory. Triton provides a Python-like programming interface, just-in-time compilation, and backend-specific code generation, substantially reducing the development effort compared with maintaining separate low-level kernels. The same block-level program can be compiled by supported backends for NVIDIA CUDA and AMD ROCm devices, while compile-time constants and \texttt{triton.autotune} allow the number of warps, pipeline stages, tile shapes, and arithmetic modes to be selected for each target. Triton therefore combines source-level portability with architecture-aware optimization, avoiding a complete rewrite of the SINS/EKF kernel for every GPU platform~\cite{triton}.
+The complete scan is implemented as one \texttt{@triton.jit} kernel with launch grid $(B,)$. Each Triton program owns one trajectory, iterates over its $N$ samples, and accesses fixed-shape state and matrix tiles through masked loads and stores. Precision types, dot-product mode, tile shape, and launch configuration are compile-time meta-parameters; specialization therefore introduces no runtime branch into the recurrent loop. Input and output buffers are allocated before launch, and compilation and autotuning are excluded from measured execution time~\cite{triton}.
 
-Hopper illustrates this hardware-specific optimization path. For eligible data types and tile shapes, Triton can lower \texttt{tl.dot} to Hopper Tensor Core MMA or warp-group MMA instructions without requiring manually written CUDA WMMA code. It also exposes tensor descriptors and TMA-based asynchronous data movement, together with configurable warp and software-pipeline organization~\cite{nvidia2022hopper}.
+On the evaluated Hopper GPU, Triton lowers eligible \texttt{tl.dot} operations to Tensor Core instructions for TF32 plans and uses CUDA-core arithmetic for IEEE plans. Scalar transcendental functions follow the backend's device-library lowering, while the analytical innovation inverse remains inside the program. We use conventional coalesced loads and stores for the per-step sensor stream because the scan consumes only a small sample at each iteration; the large recurrent state remains register-resident rather than being staged repeatedly through shared memory or TMA. This implementation matches the memory and execution mapping in \Cref{fig:fusion-path}(b) while keeping the precision and launch choices explicit~\cite{nvidia2022hopper}.
 
 \section{Evaluation}
 \label{sec:evaluation}
