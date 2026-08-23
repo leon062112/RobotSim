@@ -1,13 +1,13 @@
 # Fdb version 4
-["bibtex main"] 1787473526.44554 "main.aux" "main.bbl" "main" 1787473527.74519 0
+["bibtex main"] 1787474810.10206 "main.aux" "main.bbl" "main" 1787475539.89938 0
   "./fcs.bst" 1786960912.16865 18680 73082029395e60daa8012491125b14ab ""
   "./references.bib" 1786960912.17507 10743 69fbb4fb7b2ad43da12205db0546c19f ""
-  "main.aux" 1787473527.46872 16999 a5213c1977a9cbfd32aae485ab699d8b "pdflatex"
+  "main.aux" 1787475539.62269 18038 851da7b65763000b77257b1c25949c99 "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1787473526.53009 "main.tex" "main.pdf" "main" 1787473527.74534 0
+["pdflatex"] 1787475538.61001 "main.tex" "main.pdf" "main" 1787475539.89951 0
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/newtx/ntx-ot1-tlf-pc.enc" 1600636029 2211 c42193888177bc8f86d55dca129a9358 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/newtx/ntx-ot1-tlf.enc" 1422827479 2083 60e36f8eac802fcaf19eabe2633b406e ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/tex-gyre/q-rm.enc" 1529098226 2409 c64dab22331c83731e970f6020b4448b ""
@@ -288,13 +288,15 @@
   "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt" 1776692358 3636764 0325a1370a966858572dfe953c7c0f25 ""
   "/usr/local/texlive/2026/texmf.cnf" 1772409725 577 648cd9f92f9c0eac486f4c71c85cfbbe ""
   "fcs.cls" 1786960912.16899 24534 b948cc51f17450cef572626a65e13aab ""
+  "figures/1-intro-robot.pdf" 1787473272.97655 205663 50c25a37bfda4c71ce115a65e9610074 ""
+  "figures/3-motivation-precision_tradeoff.pdf" 1787473272.9754 43601 0717fcf49d82025237a3d5550238c820 ""
+  "figures/4-method-fusion.pdf" 1787472282.13324 94560 7a29025e6b28c4443094b8046a37dbfd ""
+  "figures/4-method-overview.pdf" 1787475480.87661 100023 6f9b90cc99af4c7d347cb4b10e62994a ""
   "figures/logo.pdf" 1786960912.17001 4236 529495c37a06e35c886529f831120b53 ""
-  "figures/precision_tradeoff.pdf" 1787473272.9754 43601 0717fcf49d82025237a3d5550238c820 ""
-  "figures/simple.pdf" 1787473272.97655 205663 50c25a37bfda4c71ce115a65e9610074 ""
-  "main.aux" 1787473527.46872 16999 a5213c1977a9cbfd32aae485ab699d8b "pdflatex"
-  "main.bbl" 1787473526.52712 6963 357876fb037de43199590a1d4e7e3919 "bibtex main"
-  "main.out" 1787473527.46976 5588 37804f266640d09820f8815d33dfb396 "pdflatex"
-  "main.tex" 1787473272.9811 58915 e173f5731cae46b9359da270e3595912 ""
+  "main.aux" 1787475539.62269 18038 851da7b65763000b77257b1c25949c99 "pdflatex"
+  "main.bbl" 1787474810.17674 6963 357876fb037de43199590a1d4e7e3919 "bibtex main"
+  "main.out" 1787475539.62361 5588 37804f266640d09820f8815d33dfb396 "pdflatex"
+  "main.tex" 1787474799.45279 51984 aac880393e63d3cf640ee4f52c09a4c4 ""
   (generated)
   "main.aux"
   "main.log"

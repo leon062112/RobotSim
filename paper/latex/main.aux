@@ -71,16 +71,18 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.2}From Fragmented Operators to a Fused Recursive Scan}{5}{subsection.4.2}\protected@file@percent }
 \newlabel{subsec:kernel-fusion}{{4.2}{5}{From Fragmented Operators to a Fused Recursive Scan}{subsection.4.2}{}}
 \newlabel{subsec:kernel-fusion@cref}{{[subsection][2][4]4.2}{[1][5][]5}{}{}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Compact design overview. The recursive SINS/EKF workload is optimized through whole-scan kernel fusion, component-aware precision specialization, and multi-trajectory parallelism.}}{5}{figure.caption.7}\protected@file@percent }
-\newlabel{fig:design-overview}{{4}{5}{Compact design overview. The recursive SINS/EKF workload is optimized through whole-scan kernel fusion, component-aware precision specialization, and multi-trajectory parallelism}{figure.caption.7}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Overview of \textsc  {Trident}. Kernel fusion retains recurrent state on chip, component-aware mixed precision selects numerically safe precision paths, and block-level trajectory mapping exposes device-wide parallelism.}}{5}{figure.caption.7}\protected@file@percent }
+\newlabel{fig:design-overview}{{4}{5}{Overview of \textsc {Trident}. Kernel fusion retains recurrent state on chip, component-aware mixed precision selects numerically safe precision paths, and block-level trajectory mapping exposes device-wide parallelism}{figure.caption.7}{}}
 \newlabel{fig:design-overview@cref}{{[figure][4][]4}{[1][5][]5}{}{}{}}
-\citation{triton}
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Precision dimensions exposed by the fused implementation.}}{6}{table.caption.8}\protected@file@percent }
-\newlabel{tab:precision-design}{{4}{6}{Precision dimensions exposed by the fused implementation}{table.caption.8}{}}
-\newlabel{tab:precision-design@cref}{{[table][4][]4}{[1][6][]6}{}{}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Whole-scan fusion and its GPU mapping. (a) Fusion replaces hundreds of eager kernels per step with one Triton launch for the full trajectory. (b) The fused program streams sensor samples and requested outputs through HBM while retaining recurrent state in registers and mapping matrix and special-function operations to the corresponding SM execution units.}}{5}{figure.caption.8}\protected@file@percent }
+\newlabel{fig:fusion-path}{{5}{5}{Whole-scan fusion and its GPU mapping. (a) Fusion replaces hundreds of eager kernels per step with one Triton launch for the full trajectory. (b) The fused program streams sensor samples and requested outputs through HBM while retaining recurrent state in registers and mapping matrix and special-function operations to the corresponding SM execution units}{figure.caption.8}{}}
+\newlabel{fig:fusion-path@cref}{{[figure][5][]5}{[1][5][]5}{}{}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Component-Aware Precision Specialization}{6}{subsection.4.3}\protected@file@percent }
 \newlabel{subsec:mixed-precision}{{4.3}{6}{Component-Aware Precision Specialization}{subsection.4.3}{}}
-\newlabel{subsec:mixed-precision@cref}{{[subsection][3][4]4.3}{[1][5][]6}{}{}{}}
+\newlabel{subsec:mixed-precision@cref}{{[subsection][3][4]4.3}{[1][6][]6}{}{}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Precision dimensions exposed by the fused implementation.}}{6}{table.caption.9}\protected@file@percent }
+\newlabel{tab:precision-design}{{4}{6}{Precision dimensions exposed by the fused implementation}{table.caption.9}{}}
+\newlabel{tab:precision-design@cref}{{[table][4][]4}{[1][6][]6}{}{}{}}
 \newlabel{eq:precision-accept}{{7}{6}{Component-Aware Precision Specialization}{equation.7}{}}
 \newlabel{eq:precision-accept@cref}{{[equation][7][]7}{[1][6][]6}{}{}{}}
 \@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Component-Aware Precision Plan Selection}}{6}{algorithm.1}\protected@file@percent }
@@ -93,15 +95,15 @@
 \newlabel{eq:batch-address@cref}{{[equation][8][]8}{[1][6][]6}{}{}{}}
 \newlabel{eq:batch-saturation}{{9}{6}{Multi-Trajectory Batch Parallelism}{equation.9}{}}
 \newlabel{eq:batch-saturation@cref}{{[equation][9][]9}{[1][6][]6}{}{}{}}
+\citation{triton}
 \citation{nvidia2022hopper}
 \citation{he2020downhole-tractor,chawla2024tractor-glide}
 \citation{huang2011gpu-kalman}
 \citation{ai2021gpu-kalman}
 \citation{liu2024fasttrack}
-\citation{sarkka2021temporal}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Implementation Details}{7}{subsection.4.5}\protected@file@percent }
 \newlabel{subsec:implementation-details}{{4.5}{7}{Implementation Details}{subsection.4.5}{}}
-\newlabel{subsec:implementation-details@cref}{{[subsection][5][4]4.5}{[1][6][]7}{}{}{}}
+\newlabel{subsec:implementation-details@cref}{{[subsection][5][4]4.5}{[1][7][]7}{}{}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {5}Evaluation}{7}{section.5}\protected@file@percent }
 \newlabel{sec:evaluation}{{5}{7}{Evaluation}{section.5}{}}
 \newlabel{sec:evaluation@cref}{{[section][5][]5}{[1][7][]7}{}{}{}}
@@ -114,9 +116,6 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Effect of Kernel Fusion}{7}{subsection.5.3}\protected@file@percent }
 \newlabel{subsec:fusion-evaluation}{{5.3}{7}{Effect of Kernel Fusion}{subsection.5.3}{}}
 \newlabel{subsec:fusion-evaluation@cref}{{[subsection][3][5]5.3}{[1][7][]7}{}{}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces End-to-end performance summary. The final manuscript will report means and variability over repeated runs.}}{7}{table.caption.9}\protected@file@percent }
-\newlabel{tab:end-to-end}{{5}{7}{End-to-end performance summary. The final manuscript will report means and variability over repeated runs}{table.caption.9}{}}
-\newlabel{tab:end-to-end@cref}{{[table][5][]5}{[1][7][]7}{}{}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Accuracy and Precision Trade-offs}{7}{subsection.5.4}\protected@file@percent }
 \newlabel{subsec:precision-evaluation}{{5.4}{7}{Accuracy and Precision Trade-offs}{subsection.5.4}{}}
 \newlabel{subsec:precision-evaluation@cref}{{[subsection][4][5]5.4}{[1][7][]7}{}{}{}}
@@ -135,6 +134,10 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.2}GPU-Accelerated Kalman Filtering}{7}{subsection.6.2}\protected@file@percent }
 \newlabel{subsec:related-kalman}{{6.2}{7}{GPU-Accelerated Kalman Filtering}{subsection.6.2}{}}
 \newlabel{subsec:related-kalman@cref}{{[subsection][2][6]6.2}{[1][7][]7}{}{}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces End-to-end performance summary. The final manuscript will report means and variability over repeated runs.}}{7}{table.caption.10}\protected@file@percent }
+\newlabel{tab:end-to-end}{{5}{7}{End-to-end performance summary. The final manuscript will report means and variability over repeated runs}{table.caption.10}{}}
+\newlabel{tab:end-to-end@cref}{{[table][5][]5}{[1][7][]7}{}{}{}}
+\citation{sarkka2021temporal}
 \citation{jia2020megakernels}
 \citation{shi2023welder}
 \citation{zheng2023chimera}
@@ -156,10 +159,6 @@
 \bibcite{bloesch2012}{5}
 \bibcite{cerberus2022}{6}
 \bibcite{isaacgym2021}{7}
-\bibcite{he2020downhole-tractor}{8}
-\bibcite{chawla2024tractor-glide}{9}
-\bibcite{triton}{10}
-\bibcite{nvidia2022hopper}{11}
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.3}MegaKernel and Kernel Fusion}{8}{subsection.6.3}\protected@file@percent }
 \newlabel{subsec:related-fusion}{{6.3}{8}{MegaKernel and Kernel Fusion}{subsection.6.3}{}}
 \newlabel{subsec:related-fusion@cref}{{[subsection][3][6]6.3}{[1][8][]8}{}{}{}}
@@ -169,6 +168,10 @@
 \@writefile{toc}{\contentsline {section}{\numberline {7}Conclusion}{8}{section.7}\protected@file@percent }
 \newlabel{sec:conclusion}{{7}{8}{Conclusion}{section.7}{}}
 \newlabel{sec:conclusion@cref}{{[section][7][]7}{[1][8][]8}{}{}{}}
+\bibcite{he2020downhole-tractor}{8}
+\bibcite{chawla2024tractor-glide}{9}
+\bibcite{triton}{10}
+\bibcite{nvidia2022hopper}{11}
 \bibcite{huang2011gpu-kalman}{12}
 \bibcite{ai2021gpu-kalman}{13}
 \bibcite{liu2024fasttrack}{14}
