@@ -202,16 +202,32 @@ Device measurements confirm that the baseline is latency-bound. A single traject
 
 Uniformly changing the precision of the estimator overlooks the different roles of its components. Sensor samples are noisy external inputs that are consumed once, whereas position, velocity, attitude, error state, and covariance are carried through the complete trajectory. Rounding in these recurrent quantities can accumulate through repeated propagation and feedback. Accuracy measured for an isolated filter step is therefore insufficient to determine whether a reduced-precision configuration is acceptable over a long simulation.
 
+Lower nominal precision also does not guarantee lower execution time. TensorFloat-32 and Tensor Core paths may require conversion, padding, and scheduling work that is difficult to amortize for the small matrices in this estimator. Storage precision, recurrent arithmetic, and matrix-multiplication mode consequently present different accuracy and performance trade-offs. This behavior motivates component-level precision choices evaluated with both hardware measurements and complete-trajectory numerical error. \Cref{fig:precision-tradeoff} combines the two views for the complete trajectory: throughput (bars) and the per-axis deviation from the all-fp32 reference (lines) share one panel, so accuracy and performance can be read together for each configuration.
+
+We additionally isolate one precision decision at a time over the complete 166,667-step trajectory, while retaining fp32/IEEE arithmetic for all remaining components. As summarized in \Cref{tab:precision-isolation}, fp16 sensor input causes only limited additional error, whereas bfloat16 input substantially amplifies the vertical error. TF32 matrix products introduce a measurable X-axis deviation, and storing the recurrent navigation state in fp16 causes the long-horizon filter to diverge. These outcomes distinguish once-consumed sensor data from values repeatedly propagated through the recursion and motivate the component-aware scheme in \Cref{sec:methodology}.
+
+\begin{table}[H]
+  \centering
+  \caption{Component-isolation precision study over the full 166,667-step trajectory. Each row lowers one component while the remaining components use fp32/IEEE arithmetic; values report the RMSE increase relative to the all-fp32 reference.}
+  \label{tab:precision-isolation}
+  \begin{tabular}{@{}llrr@{}}
+    \toprule
+    Component & Lowered mode & $\Delta$X (mm) & $\Delta$Z (mm) \\
+    \midrule
+    Sensor input & fp16 & $0.11$ & $2.19$ \\
+    Matrix products & TF32 & $4.82$ & $0.31$ \\
+    Sensor input & bfloat16 & $11.01$ & $1005.84$ \\
+    Recurrent state & fp16 storage & $280753.72$ & $-0.30$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 \begin{figure}[!t]
   \centering
-  \includegraphics[width=\columnwidth]{figures/precision_tradeoff.pdf}
-  \caption{Precision--performance trade-off over the complete 166,667-step trajectory. Bars report fused-kernel throughput on the left axis; markers report normalized absolute X- and Z-RMSE deviations from fused fp64 on the right axis. Each reduced-precision configuration changes only the named component, with all remaining operations in fp32/IEEE.}
+  \includegraphics[width=\linewidth]{figures/precision_tradeoff.pdf}
+  \caption{Precision trade-off in the fused SINS/EKF scan over the full 166{,}667-step trajectory. Bars (lower log axis) report end-to-end throughput, and lines (upper band, log axis) report the relative X/Z positioning deviation against the all-fp32 reference. The $10^{-3}$ line marks an fp16-$\varepsilon$ accuracy grade: bfloat16 sensor input and fp16 recurrent storage cross it and are unsafe for the long-horizon filter, whereas fp16 sensor input and TF32 matrix products remain near it without reducing throughput.}
   \label{fig:precision-tradeoff}
 \end{figure}
-
-\Cref{fig:precision-tradeoff} separates this performance effect from numerical deviation. Replacing fused fp64 arithmetic with fp32 increases throughput from 17.1 to 249.6 thousand steps/s, a $14.6\times$ improvement, while the normalized deviations remain approximately $1.1\times10^{-4}$ in X and $1.0\times10^{-5}$ in Z. Because the markers measure distance from the fp64 trajectory rather than error against ground truth, the plot does not imply that fp32 is intrinsically more accurate than fp64; fp64 is the zero-deviation numerical reference.
-
-The component experiments show why precision must be assigned by numerical role. Storing only sensor input in fp16 preserves fp32-level throughput and produces an almost unchanged X RMSE, although the 2.19-mm Z-RMSE change remains visible relative to the much smaller fp64 Z error. TF32 dot products reduce throughput to 208.1 thousand steps/s and introduce additional deviation, demonstrating that Tensor Core setup and conversion are not amortized by these small matrices. Storing recurrent state in fp16 yields only a marginal throughput change but increases the normalized X deviation to approximately $2.8\times10^{2}$, indicating long-horizon divergence. Lower nominal precision therefore neither guarantees higher throughput nor preserves recursive-filter accuracy, motivating the component-aware scheme in \Cref{subsec:mixed-precision}.
 
 \subsection{Independent Trajectories Supply Device-Level Parallelism}
 \label{subsec:motivation-trajectories}
@@ -250,7 +266,62 @@ All transformations preserve the ordering of propagation, measurement update, an
 
 \begin{figure}[!t]
   \centering
-  \includegraphics[width=\columnwidth]{figures/Fig4.pdf}
+  \begin{tikzpicture}[
+      font=\scriptsize,
+      input/.style={draw=black!65, rounded corners=2pt,
+        fill=black!3, align=center, text width=2.55cm,
+        minimum height=9mm, inner sep=2.5pt},
+      workload/.style={draw=black!65, rounded corners=2pt,
+        fill=black!3, align=center, text width=2.75cm,
+        minimum height=9mm, inner sep=2.5pt},
+      fusion/.style={draw=blue!45!black, rounded corners=2pt,
+        fill=blue!4, align=center, text width=5.25cm,
+        minimum height=10mm, inner sep=2.5pt},
+      precision/.style={draw=blue!60!black, rounded corners=2pt,
+        fill=blue!10, align=center, text width=5.25cm,
+        minimum height=10mm, inner sep=2.5pt},
+      parallel/.style={draw=blue!75!black, rounded corners=2pt,
+        fill=blue!18, align=center, text width=5.25cm,
+        minimum height=10mm, inner sep=2.5pt},
+      output/.style={draw=black!65, rounded corners=2pt,
+        fill=black!3, align=center, text width=5.25cm,
+        minimum height=10mm, inner sep=2.5pt},
+      arrow/.style={-{Latex[length=1.8mm]}, semithick, draw=black!70},
+      link/.style={-{Latex[length=1.6mm]}, semithick, draw=black!55},
+      bus/.style={semithick, draw=black!55}
+    ]
+    \node[input] (inputs) at (-1.75,0)
+      {\textbf{Simulation inputs}\\IMU, odometry, initial state};
+    \node[workload] (scan) at (1.65,0)
+      {\textbf{Recursive SINS/EKF scan}\\$B$ trajectories $\times$ $N$ ordered steps};
+    \draw[arrow] (inputs) -- (scan);
+
+    \node[fusion] (fusion) at (0,-1.55)
+      {\textbf{\Cref{subsec:kernel-fusion}: whole-scan kernel fusion}\\one Triton kernel; recurrent state retained on chip};
+    \node[precision] (precision) at (0,-3.00)
+      {\textbf{\Cref{subsec:mixed-precision}: component-aware precision}\\specialize $\mathit{DT}_{\mathrm{IO}}$, recurrent $\mathit{DT}$, and dot-product mode $\mathit{IP}$};
+    \node[parallel] (parallel) at (0,-4.45)
+      {\textbf{\Cref{subsec:batch-parallelism}: multi-trajectory parallelism}\\trajectory $b$ $\rightarrow$ CUDA block $b$ with private recurrent state};
+
+    \coordinate (forktop) at ($(scan.south)+(0,-3.5mm)$);
+    \coordinate (lefttop) at (-3.15,-0.75);
+    \coordinate (leftbottom) at (-3.15,-4.45);
+    \draw[bus] (scan.south) -- (forktop) -- (lefttop) -- (leftbottom);
+    \draw[link] (-3.15,-1.55) -- (fusion.west);
+    \draw[link] (-3.15,-3.00) -- (precision.west);
+    \draw[link] (-3.15,-4.45) -- (parallel.west);
+
+    \coordinate (righttop) at (3.15,-1.55);
+    \coordinate (rightbottom) at (3.15,-5.15);
+    \draw[bus] (fusion.east) -- (righttop);
+    \draw[bus] (precision.east) -- (3.15,-3.00);
+    \draw[bus] (parallel.east) -- (3.15,-4.45);
+    \draw[bus] (righttop) -- (rightbottom);
+
+    \node[output] (outputs) at (0,-5.95)
+      {\textbf{Accelerated trajectory outputs}\\position, velocity, attitude, and filter state};
+    \draw[arrow] (rightbottom) -- (0,-5.15) -- (outputs.north);
+  \end{tikzpicture}
   \caption{Compact design overview. The recursive SINS/EKF workload is optimized through whole-scan kernel fusion, component-aware precision specialization, and multi-trajectory parallelism.}
   \label{fig:design-overview}
 \end{figure}
