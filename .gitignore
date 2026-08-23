@@ -1,3 +1,23 @@
 __pycache__/
 .claude/
 .DS_Store
+
+# LaTeX build artifacts
+paper/latex/*.aux
+paper/latex/*.bbl
+paper/latex/*.bcf
+paper/latex/*.blg
+paper/latex/*.fdb_latexmk
+paper/latex/*.fls
+paper/latex/*.lof
+paper/latex/*.log
+paper/latex/*.lot
+paper/latex/*.nav
+paper/latex/*.out
+paper/latex/*.run.xml
+paper/latex/*.snm
+paper/latex/*.synctex.gz
+paper/latex/*.toc
+paper/latex/*.vrb
+paper/latex/texput.*
+paper/latex/main.pdf

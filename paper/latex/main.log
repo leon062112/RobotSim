@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.8.19)  22 AUG 2026 23:19
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.20)  23 AUG 2026 16:25
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -181,7 +181,7 @@ Package: fancyhdr 2025/02/07 v5.2 Extensive control of page headers and footers
 \@temptokenb=\toks29
 )
 (/usr/local/texlive/2026/texmf-dist/tex/latex/geometry/geometry.sty
-Package: geometry 2026/03/07 v6.0 Page Geometry
+Package: geometry 2020/01/02 v5.9 Page Geometry
 
 (/usr/local/texlive/2026/texmf-dist/tex/generic/iftex/ifvtex.sty
 Package: ifvtex 2019/10/25 v1.7 ifvtex legacy package. Use iftex instead.
@@ -1627,7 +1627,7 @@ LaTeX Font Info:    Font shape `OT1/qhv/m/n' will be
 LaTeX Font Info:    Font shape `OT1/qhv/m/n' will be
 (Font)              scaled to size 5.73401pt on input line 172.
  [3]
-<figures/precision_tradeoff.pdf, id=227, 717.93103pt x 431.68253pt>
+<figures/precision_tradeoff.pdf, id=229, 717.93103pt x 431.68253pt>
 File: figures/precision_tradeoff.pdf Graphic file (type pdf)
 <use figures/precision_tradeoff.pdf>
 Package pdftex.def Info: figures/precision_tradeoff.pdf  used on input line 227
@@ -1706,10 +1706,10 @@ sym.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/txsys.pfb>
 </usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/ztmb.pfb></usr/loc
 al/texlive/2026/texmf-dist/fonts/type1/public/newtx/ztmr.pfb></usr/local/texliv
 e/2026/texmf-dist/fonts/type1/public/newtx/ztmri.pfb>
-Output written on main.pdf (9 pages, 546406 bytes).
+Output written on main.pdf (9 pages, 546537 bytes).
 PDF statistics:
- 516 PDF objects out of 1000 (max. 8388607)
- 362 compressed objects within 4 object streams
+ 517 PDF objects out of 1000 (max. 8388607)
+ 363 compressed objects within 4 object streams
  84 named destinations out of 1000 (max. 500000)
  142076 words of extra memory for PDF output out of 154059 (max. 10000000)
 
