@@ -1,13 +1,13 @@
 # Fdb version 4
-["bibtex main"] 1787411975.09008 "main.aux" "main.bbl" "main" 1787411976.87521 0
-  "./fcs.bst" 1787132484.35238 18680 73082029395e60daa8012491125b14ab ""
-  "./references.bib" 1787132484.36101 10743 69fbb4fb7b2ad43da12205db0546c19f ""
-  "main.aux" 1787411976.52705 16999 a5213c1977a9cbfd32aae485ab699d8b "pdflatex"
+["bibtex main"] 1787472132.02494 "main.aux" "main.bbl" "main" 1787472133.22739 0
+  "./fcs.bst" 1786960912.16865 18680 73082029395e60daa8012491125b14ab ""
+  "./references.bib" 1786960912.17507 10743 69fbb4fb7b2ad43da12205db0546c19f ""
+  "main.aux" 1787472132.97925 15943 a68feb60a2117ead03d7087cb0d3bddb "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1787411975.20744 "main.tex" "main.pdf" "main" 1787411976.87553 0
+["pdflatex"] 1787472132.14087 "main.tex" "main.pdf" "main" 1787472133.2275 0
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/newtx/ntx-ot1-tlf-pc.enc" 1600636029 2211 c42193888177bc8f86d55dca129a9358 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/newtx/ntx-ot1-tlf.enc" 1422827479 2083 60e36f8eac802fcaf19eabe2633b406e ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/tex-gyre/q-rm.enc" 1529098226 2409 c64dab22331c83731e970f6020b4448b ""
@@ -207,7 +207,7 @@
   "/usr/local/texlive/2026/texmf-dist/tex/latex/figureversions/figureversions.sty" 1746041551 18666 2ca37665798a8bb43e1c59968f22e2aa ""
   "/usr/local/texlive/2026/texmf-dist/tex/latex/float/float.sty" 1137110151 6749 16d2656a1984957e674b149555f1ea1d ""
   "/usr/local/texlive/2026/texmf-dist/tex/latex/fontaxes/fontaxes.sty" 1767903133 3035 640dbe69f1693da9dfa91b979b3bb55c ""
-  "/usr/local/texlive/2026/texmf-dist/tex/latex/geometry/geometry.sty" 1772916678 41904 7711079366884e0d15963c9d40019853 ""
+  "/usr/local/texlive/2026/texmf-dist/tex/latex/geometry/geometry.sty" 1578002852 41601 9cf6c5257b1bc7af01a58859749dd37a ""
   "/usr/local/texlive/2026/texmf-dist/tex/latex/graphics-cfg/color.cfg" 1459978653 1213 620bba36b25224fa9b7e1ccb4ecb76fd ""
   "/usr/local/texlive/2026/texmf-dist/tex/latex/graphics-cfg/graphics.cfg" 1465944070 1224 978390e9c2234eab29404bc21b268d1e ""
   "/usr/local/texlive/2026/texmf-dist/tex/latex/graphics-def/pdftex.def" 1759176675 19626 23e2822b9b2b5005f4c549ca98b9334d ""
@@ -284,17 +284,18 @@
   "/usr/local/texlive/2026/texmf-dist/tex/latex/xpatch/xpatch.sty" 1585258158 8314 7803f78066c4f9d008405191a4b43073 ""
   "/usr/local/texlive/2026/texmf-dist/tex/latex/xurl/xurl.sty" 1641763214 4675 e4b8c405820368c2dfb03526e16d725a ""
   "/usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf" 1770478701 43630 e9fa012910491fe5ae08a72c3c2997a7 ""
-  "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1787144277 5573038 b99aad5e4898a9034e953632f940512b ""
-  "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt" 1787144246 3636771 bbb571ed6a7d9772b780a3bc32ad0fb4 ""
-  "/usr/local/texlive/2026/texmf.cnf" 1774209515 577 648cd9f92f9c0eac486f4c71c85cfbbe ""
-  "fcs.cls" 1787132484.35256 24534 b948cc51f17450cef572626a65e13aab ""
-  "figures/logo.pdf" 1787132484.35559 4236 529495c37a06e35c886529f831120b53 ""
-  "figures/precision_tradeoff.pdf" 1787411912.55115 43601 0717fcf49d82025237a3d5550238c820 ""
-  "figures/simple.pdf" 1787132484.3572 205663 50c25a37bfda4c71ce115a65e9610074 ""
-  "main.aux" 1787411976.52705 16999 a5213c1977a9cbfd32aae485ab699d8b "pdflatex"
-  "main.bbl" 1787411975.20346 6963 357876fb037de43199590a1d4e7e3919 "bibtex main"
-  "main.out" 1787411976.52885 5588 37804f266640d09820f8815d33dfb396 "pdflatex"
-  "main.tex" 1787411966.40814 58858 14a2f6a98a0ac0bfae610d200ba323fc ""
+  "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1776692452 5541377 04880c840ca220163a28f1a3af0ee662 ""
+  "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt" 1776692358 3636764 0325a1370a966858572dfe953c7c0f25 ""
+  "/usr/local/texlive/2026/texmf.cnf" 1772409725 577 648cd9f92f9c0eac486f4c71c85cfbbe ""
+  "fcs.cls" 1786960912.16899 24534 b948cc51f17450cef572626a65e13aab ""
+  "figures/Fig4.pdf" 1787233897.59367 122610 af38b1763f13fef42919786319fba504 ""
+  "figures/logo.pdf" 1786960912.17001 4236 529495c37a06e35c886529f831120b53 ""
+  "figures/precision_tradeoff.pdf" 1787472094.03661 48854 7fb6c1e109dbf69dda41707302dda7cc ""
+  "figures/simple.pdf" 1787471921.17305 203022 53a1eb2e73c2ffbd77c66637bf2a3bd0 ""
+  "main.aux" 1787472132.97925 15943 a68feb60a2117ead03d7087cb0d3bddb "pdflatex"
+  "main.bbl" 1787472132.13816 6963 357876fb037de43199590a1d4e7e3919 "bibtex main"
+  "main.out" 1787472132.98008 5588 37804f266640d09820f8815d33dfb396 "pdflatex"
+  "main.tex" 1787472042.69668 55146 5bf54fa8b6019c031f24852b80a2bd56 ""
   (generated)
   "main.aux"
   "main.log"
