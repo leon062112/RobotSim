@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.8.19)  22 AUG 2026 23:19
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.20)  23 AUG 2026 16:02
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -181,7 +181,7 @@ Package: fancyhdr 2025/02/07 v5.2 Extensive control of page headers and footers
 \@temptokenb=\toks29
 )
 (/usr/local/texlive/2026/texmf-dist/tex/latex/geometry/geometry.sty
-Package: geometry 2026/03/07 v6.0 Page Geometry
+Package: geometry 2020/01/02 v5.9 Page Geometry
 
 (/usr/local/texlive/2026/texmf-dist/tex/generic/iftex/ifvtex.sty
 Package: ifvtex 2019/10/25 v1.7 ifvtex legacy package. Use iftex instead.
@@ -1522,11 +1522,11 @@ local/texlive/2026/texmf-dist/fonts/enc/dvips/newtx/ntx-ot1-tlf.enc}{/usr/local
 
 {/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/tex-gyre/q-rm.enc} <./figur
 es/logo.pdf>]
-<figures/simple.pdf, id=172, 918.67213pt x 604.41808pt>
+<figures/simple.pdf, id=172, 844.2943pt x 562.26057pt>
 File: figures/simple.pdf Graphic file (type pdf)
 <use figures/simple.pdf>
 Package pdftex.def Info: figures/simple.pdf  used on input line 50.
-(pdftex.def)             Requested size: 250.38426pt x 164.73524pt.
+(pdftex.def)             Requested size: 250.38426pt x 166.74052pt.
 LaTeX Font Info:    Font shape `OT1/ntxtlf/b/n' will be
 (Font)              scaled to size 7.0pt on input line 51.
 LaTeX Font Info:    Font shape `OT1/ntxtlf/b/n' will be
@@ -1627,54 +1627,47 @@ LaTeX Font Info:    Font shape `OT1/qhv/m/n' will be
 LaTeX Font Info:    Font shape `OT1/qhv/m/n' will be
 (Font)              scaled to size 5.73401pt on input line 172.
  [3]
-<figures/precision_tradeoff.pdf, id=227, 717.93103pt x 431.68253pt>
+<figures/precision_tradeoff.pdf, id=226, 328.27795pt x 313.9815pt>
 File: figures/precision_tradeoff.pdf Graphic file (type pdf)
 <use figures/precision_tradeoff.pdf>
-Package pdftex.def Info: figures/precision_tradeoff.pdf  used on input line 227
+Package pdftex.def Info: figures/precision_tradeoff.pdf  used on input line 207
 .
-(pdftex.def)             Requested size: 250.38426pt x 150.55101pt.
+(pdftex.def)             Requested size: 250.38426pt x 239.486pt.
  [4 <./figures/precision_tradeoff.pdf>]
-LaTeX Font Info:    Font shape `OT1/ntxtlf/b/n' will be
-(Font)              scaled to size 6.0pt on input line 294.
+<figures/Fig4.pdf, id=269, 441.71022pt x 301.43616pt>
+File: figures/Fig4.pdf Graphic file (type pdf)
+<use figures/Fig4.pdf>
+Package pdftex.def Info: figures/Fig4.pdf  used on input line 253.
+(pdftex.def)             Requested size: 250.38426pt x 170.86829pt.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 6.5pt on input line 302.
+(Font)              scaled to size 9.0pt on input line 360.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 5.5pt on input line 302.
+(Font)              scaled to size 6.6pt on input line 360.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 7.3pt on input line 329.
+(Font)              scaled to size 5.5pt on input line 360.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 9.0pt on input line 336.
-LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 6.6pt on input line 336.
-
-Underfull \vbox (badness 6268) has occurred while \output is active []
-
- [5]
+(Font)              scaled to size 7.3pt on input line 361.
+ [5 <./figures/Fig4.pdf>]
 Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on in
-put line 457.
+put line 386.
 LaTeX Font Info:    Font shape `OT1/ntxtlf/m/n' will be
-(Font)              scaled to size 5.5pt on input line 475.
+(Font)              scaled to size 5.5pt on input line 404.
 
-Underfull \vbox (badness 1019) has occurred while \output is active []
-
- [6]
+[6]
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 10.95pt on input line 521.
+(Font)              scaled to size 10.95pt on input line 450.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 8.0pt on input line 521.
+(Font)              scaled to size 8.0pt on input line 450.
 LaTeX Font Info:    Font shape `OT1/minntx/m/it' will be
-(Font)              scaled to size 6.1pt on input line 521.
-
-[7]
+(Font)              scaled to size 6.1pt on input line 450.
+ [7]
 LaTeX Font Info:    Font shape `OT1/ntxtlf/m/n' will be
-(Font)              scaled to size 8.5pt on input line 609.
+(Font)              scaled to size 8.5pt on input line 538.
 LaTeX Font Info:    Font shape `OT1/ntxtlf/b/n' will be
-(Font)              scaled to size 5.5pt on input line 611.
- (./main.bbl [8]
-Underfull \vbox (badness 10000) has occurred while \output is active []
+(Font)              scaled to size 5.5pt on input line 540.
+ (./main.bbl [8]) [9
 
-) [9]
-(./main.aux)
+] (./main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2020/03/25>
@@ -1683,11 +1676,11 @@ Package rerunfilecheck Info: File `main.out' has not changed.
 (rerunfilecheck)             Checksum: 37804F266640D09820F8815D33DFB396;5588.
  ) 
 Here is how much of TeX's memory you used:
- 37677 strings out of 467525
- 702420 string characters out of 5418982
- 1099836 words of memory out of 5000000
- 65304 multiletter control sequences out of 15000+600000
- 783764 words of font info for 598 fonts, out of 8000000 for 9000
+ 37528 strings out of 467525
+ 699658 string characters out of 5418982
+ 1099384 words of memory out of 5000000
+ 65170 multiletter control sequences out of 15000+600000
+ 777992 words of font info for 586 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  113i,14n,122p,1849b,911s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/NewTXBMI.pfb></u
@@ -1706,10 +1699,10 @@ sym.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/txsys.pfb>
 </usr/local/texlive/2026/texmf-dist/fonts/type1/public/newtx/ztmb.pfb></usr/loc
 al/texlive/2026/texmf-dist/fonts/type1/public/newtx/ztmr.pfb></usr/local/texliv
 e/2026/texmf-dist/fonts/type1/public/newtx/ztmri.pfb>
-Output written on main.pdf (9 pages, 546406 bytes).
+Output written on main.pdf (9 pages, 675745 bytes).
 PDF statistics:
- 516 PDF objects out of 1000 (max. 8388607)
- 362 compressed objects within 4 object streams
- 84 named destinations out of 1000 (max. 500000)
- 142076 words of extra memory for PDF output out of 154059 (max. 10000000)
+ 477 PDF objects out of 1000 (max. 8388607)
+ 376 compressed objects within 4 object streams
+ 83 named destinations out of 1000 (max. 500000)
+ 135425 words of extra memory for PDF output out of 154059 (max. 10000000)
 
