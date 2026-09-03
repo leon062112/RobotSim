@@ -104,13 +104,13 @@ def run_ekf_v7_events(csv_path='data/trajectory/PipeRobot_Trajectory.csv', n_ste
 
     base_args = (gyro, accel, odom1, odom2, qinit, qdiag, pos_out, vel_out,
                  n, dt_val, g, 1e-4, 1e-3, 0.01, 1e12,
-                 gyro_bs, accel_bs, odom_bs, out_bs, DT, IP)
+                 gyro_bs, accel_bs, odom_bs, out_bs, 0, DT, IP)
 
     # Warmup — use same N to ensure kernel is cached before timed run
     ekf_mega_batch_kernel[(batch,)](
         gyro, accel, odom1, odom2, qinit, qdiag, pos_out, vel_out,
         n, dt_val, g, 1e-4, 1e-3, 0.01, 1e12,
-        gyro_bs, accel_bs, odom_bs, out_bs, DT, IP)
+        gyro_bs, accel_bs, odom_bs, out_bs, 0, DT, IP)
     torch.cuda.synchronize()
     pos_out.zero_(); vel_out.zero_()
 
@@ -177,7 +177,7 @@ def run_ekf_v7_events(csv_path='data/trajectory/PipeRobot_Trajectory.csv', n_ste
                     pos_out[s * (batch // n_streams):s * (batch // n_streams) + b_local],
                     vel_out[s * (batch // n_streams):s * (batch // n_streams) + b_local],
                     n, dt_val, g, 1e-4, 1e-3, 0.01, 1e12,
-                    gyro_bs, accel_bs, odom_bs, out_bs, DT, IP)
+                    gyro_bs, accel_bs, odom_bs, out_bs, 0, DT, IP)
                 stream_end_ev[s].record(streams[s])
 
         # Wait all streams

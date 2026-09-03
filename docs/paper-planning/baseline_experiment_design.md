@@ -119,3 +119,5 @@ GPU 具体型号、显存、驱动版本、CUDA 版本、PyTorch / Triton 版本
 - [ ] 跑 3.1 torch eager 全量
 - [ ] 实现 3.2 prefix-sum（优先 JAX 路径）
 - [ ] 按第 4 节模板出四张表，替换 main.tex `sec:evaluation` 的占位段
+
+

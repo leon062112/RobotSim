@@ -21,3 +21,4 @@ paper/latex/*.toc
 paper/latex/*.vrb
 paper/latex/texput.*
 paper/latex/main.pdf
+data/trajectory/

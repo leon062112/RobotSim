@@ -1,12 +1,19 @@
 """
 套管井机器人轨迹仿真数据生成 (fangzhen.m -> PyTorch)
 生成500m管道轨迹，模拟障碍扰动，输出IMU+双里程计数据
+
+单条轨迹: csv (N,15)，列 = time,pos_x/y/z,vel_x/y/z,gyro_x/y/z,accel_x/y/z,odom1,odom2
+批量轨迹: npy (B,N,15)，不同 seed（不同障碍/噪声实现）用于蒙特卡洛 batch 实验
 """
 import torch
 import numpy as np
 import os
 
-def generate_trajectory(seed=42, save_path='data/trajectory/PipeRobot_Trajectory.csv'):
+HEADER = 'time_s,pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,gyro_x,gyro_y,gyro_z,accel_x,accel_y,accel_z,odom1,odom2'
+
+
+def _generate_columns(seed):
+    """生成一条轨迹的 (N,15) numpy 数组（列序与 HEADER 一致）。"""
     torch.manual_seed(seed)
 
     # 1. 物理参数
@@ -22,8 +29,6 @@ def generate_trajectory(seed=42, save_path='data/trajectory/PipeRobot_Trajectory
     N = round(L_total / v_x * fs)
     time = torch.arange(N, dtype=torch.float64) * dt
     g = 9.81
-
-    print(f'总仿真时间：{time[-1]:.1f} 秒 | 总点数：{N}')
 
     # 2. 基础轨迹生成
     pos_true = torch.zeros(3, N, dtype=torch.float64)
@@ -54,8 +59,6 @@ def generate_trajectory(seed=42, save_path='data/trajectory/PipeRobot_Trajectory
         obs_positions.append(current_x)
         obs_types.append(torch.randint(1, 4, (1,)).item())
         obs_amplitudes.append(obs_amplitude_min + (obs_amplitude_max - obs_amplitude_min) * torch.rand(1).item())
-
-    print(f'生成障碍总数：{len(obs_positions)} 个')
 
     # 4. 给轨迹加入障碍扰动
     obs_width = 0.5
@@ -92,7 +95,6 @@ def generate_trajectory(seed=42, save_path='data/trajectory/PipeRobot_Trajectory
     odom1 = v_x + 0.02 * torch.randn(N, dtype=torch.float64)
     odom2 = v_x + 0.02 * torch.randn(N, dtype=torch.float64)
 
-    # 6. 保存 CSV
     data = torch.stack([
         time,
         pos_true[0], pos_true[1], pos_true[2],
@@ -101,12 +103,42 @@ def generate_trajectory(seed=42, save_path='data/trajectory/PipeRobot_Trajectory
         accel[0], accel[1], accel[2],
         odom1, odom2
     ], dim=1)  # (N, 15)
+    return data.numpy()
 
-    header = 'time_s,pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,gyro_x,gyro_y,gyro_z,accel_x,accel_y,accel_z,odom1,odom2'
-    np.savetxt(save_path, data.numpy(), delimiter=',', header=header, comments='')
-    print(f'轨迹已保存：{save_path}')
 
+def generate_trajectory(seed=42, save_path='data/trajectory/PipeRobot_Trajectory.csv'):
+    """生成单条轨迹 CSV，返回 torch 张量（保持历史调用签名）。"""
+    data = _generate_columns(seed)
+    np.savetxt(save_path, data, delimiter=',', header=HEADER, comments='')
+    print(f'轨迹已保存：{save_path} (N={data.shape[0]})')
+
+    time = torch.from_numpy(data[:, 0])
+    pos_true = torch.from_numpy(data[:, 1:4].T)
+    vel_true = torch.from_numpy(data[:, 4:7].T)
+    gyro = torch.from_numpy(data[:, 7:10].T)
+    accel = torch.from_numpy(data[:, 10:13].T)
+    odom1 = torch.from_numpy(data[:, 13])
+    odom2 = torch.from_numpy(data[:, 14])
     return time, pos_true, vel_true, gyro, accel, odom1, odom2
+
+
+def generate_trajectory_batch(seeds, out_path='data/trajectory/traj_batch.npy',
+                              verbose=True):
+    """生成 B 条独立轨迹 (B,N,15) 存为 .npy（蒙特卡洛 batch 输入）。
+
+    seeds: list[int]; 相同 length = B，互相独立（不同 seed => 不同障碍/噪声实现）。
+    """
+    arrays = []
+    for s in seeds:
+        a = _generate_columns(s)
+        arrays.append(a)
+        if verbose:
+            print(f'  seed={s}: N={a.shape[0]}')
+    batch = np.stack(arrays, axis=0)  # (B, N, 15)
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    np.save(out_path, batch)
+    print(f'批量轨迹已保存：{out_path}  shape={batch.shape} dtype={batch.dtype}')
+    return batch
 
 
 if __name__ == '__main__':

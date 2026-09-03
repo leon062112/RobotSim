@@ -1,0 +1,48 @@
+{
+  "hardware": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "sm": 108
+  },
+  "batch_sweep": [
+    {
+      "version": "torch_kf",
+      "batch": 1,
+      "n_steps": 2000,
+      "elapsed_s": 0.971665620803833,
+      "throughput_steps_per_s": 2058.321254945146,
+      "throughput_traj_per_s": 1.029160627472573
+    },
+    {
+      "version": "torch_kf",
+      "batch": 16,
+      "n_steps": 2000,
+      "elapsed_s": 0.8836722373962402,
+      "throughput_steps_per_s": 36212.521618070416,
+      "throughput_traj_per_s": 18.106260809035206
+    },
+    {
+      "version": "torch_kf",
+      "batch": 64,
+      "n_steps": 2000,
+      "elapsed_s": 0.8879139423370361,
+      "throughput_steps_per_s": 144158.11476402462,
+      "throughput_traj_per_s": 72.07905738201231
+    },
+    {
+      "version": "torch_kf",
+      "batch": 108,
+      "n_steps": 2000,
+      "elapsed_s": 0.9053468704223633,
+      "throughput_steps_per_s": 238582.58868143155,
+      "throughput_traj_per_s": 119.29129434071577
+    }
+  ],
+  "full_N": {
+    "version": "torch_kf",
+    "batch": 108,
+    "n_steps": 166667,
+    "elapsed_s": 73.8212583065033,
+    "throughput_steps_per_s": 243832.69010756328,
+    "throughput_traj_per_s": 1.4629932146589504
+  }
+}

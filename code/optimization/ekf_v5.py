@@ -23,7 +23,7 @@ def ekf_mega_batch_kernel(
     gyro_ptr, accel_ptr, odom1_ptr, odom2_ptr,
     qinit_ptr, qdiag_ptr, pos_out_ptr, vel_out_ptr,
     N, dt, g, R_odo, R_vcon, delta_thresh, R_big,
-    gyro_bs, accel_bs, odom_bs, out_bs,
+    gyro_bs, accel_bs, odom_bs, out_bs, qinit_bs,
     DT: tl.constexpr, IP: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -38,7 +38,7 @@ def ekf_mega_batch_kernel(
     c = j[None, :]
     eye = (r == c).to(DT)
 
-    q0v = tl.load(qinit_ptr + i, mask=i < 4, other=0.0).to(DT)
+    q0v = tl.load(qinit_ptr + pid * qinit_bs + i, mask=i < 4, other=0.0).to(DT)
     qdiag = tl.load(qdiag_ptr + i, mask=i < 15, other=0.0).to(DT)
     pos = tl.zeros((16,), dtype=DT)
     vel = tl.zeros((16,), dtype=DT)
@@ -321,12 +321,12 @@ def run_ekf_v5(csv_path='data/trajectory/PipeRobot_Trajectory.csv', n_steps=None
 
     args = (gyro, accel, odom1, odom2, qinit, qdiag, pos_out, vel_out,
             n, dt_val, g, 1e-4, 1e-3, 0.01, 1e12,
-            gyro_bs, accel_bs, odom_bs, out_bs, DT, IP)
+            gyro_bs, accel_bs, odom_bs, out_bs, 0, DT, IP)
 
     # warmup
     ekf_mega_batch_kernel[(batch,)](*((gyro, accel, odom1, odom2, qinit, qdiag,
         pos_out, vel_out, min(n, 64), dt_val, g, 1e-4, 1e-3, 0.01, 1e12,
-        gyro_bs, accel_bs, odom_bs, out_bs, DT, IP)))
+        gyro_bs, accel_bs, odom_bs, out_bs, 0, DT, IP)))
     torch.cuda.synchronize()
     pos_out.zero_(); vel_out.zero_()
 
@@ -360,6 +360,105 @@ def run_ekf_v5(csv_path='data/trajectory/PipeRobot_Trajectory.csv', n_steps=None
         print(f"  RMSE mm: X={rmse_x:.4f} Y={rmse_y:.4f} Z={rmse_z:.4f} | "
               f"traj_spread={max_traj_spread:.2e}m")
     return pos_out, vel_out, pos_true, t[:n], metrics
+
+
+def _qinit_from_accel(accel10):
+    """accel10: (B,10,3) fp64 tensor -> (B,4) per-trajectory 初始四元数 (fp64, 逐条对准)."""
+    a = accel10.double()
+    ax0 = a[:, :, 0].mean(1)
+    ay0 = a[:, :, 1].mean(1)
+    az0 = a[:, :, 2].mean(1)
+    pitch0 = torch.atan(ay0 / torch.sqrt(ax0**2 + az0**2))
+    roll0 = torch.atan(-ax0 / az0)
+    yaw0 = torch.zeros_like(pitch0)
+    cy, sy = torch.cos(yaw0 / 2), torch.sin(yaw0 / 2)
+    cp, sp = torch.cos(pitch0 / 2), torch.sin(pitch0 / 2)
+    cr, sr = torch.cos(roll0 / 2), torch.sin(roll0 / 2)
+    return torch.stack([cy * cp * cr + sy * sp * sr, cy * cp * sr - sy * sp * cr,
+                        cy * sp * cr + sy * cp * sr, sy * cp * cr - cy * sp * sr], dim=1)
+
+
+def run_ekf_v5_independent(traj_npy='data/trajectory/traj_batch_fp64.npy', n_steps=None,
+                           precision='fp32', batch=None, verbose=True):
+    """B 条独立轨迹（蒙特卡洛）并行。输入 (B,N,15) npy，每条轨迹不同 seed、
+    各自初始对准（qinit 逐条）与各自真值。用于替换 replicate 语义的 batch 吞吐基线。
+
+    batch=None 用 npy 里全部轨迹；否则取前 batch 条。
+    """
+    assert torch.cuda.is_available(), "v5-independent 需要 CUDA"
+    DT, IP, torch_dt = _PREC[precision]
+    dev = torch.device('cuda')
+
+    batch_arr = np.load(traj_npy)            # (B,N,15) float64
+    N_full = batch_arr.shape[1]
+    N = min(N_full, n_steps) if n_steps is not None else N_full
+    B_full = batch_arr.shape[0]
+    B = min(batch, B_full) if batch is not None else B_full
+    batch_arr = batch_arr[:B, :N, :]
+
+    # 列序: 7:10 gyro, 10:13 accel, 13 odom1, 14 odom2, 1:4 pos_true
+    gyro = torch.from_numpy(np.ascontiguousarray(batch_arr[:, :, 7:10])).to(dev, torch_dt).contiguous()
+    accel = torch.from_numpy(np.ascontiguousarray(batch_arr[:, :, 10:13])).to(dev, torch_dt).contiguous()
+    odom1 = torch.from_numpy(np.ascontiguousarray(batch_arr[:, :, 13])).to(dev, torch_dt).contiguous()
+    odom2 = torch.from_numpy(np.ascontiguousarray(batch_arr[:, :, 14])).to(dev, torch_dt).contiguous()
+    pos_true_all = torch.from_numpy(np.ascontiguousarray(batch_arr[:, :, 1:4])).to(dev).double()
+
+    t = torch.arange(N, dtype=torch.float64) * 0.01   # dt = 1/fs = 0.01
+    dt_val = 0.01
+    g = 9.81
+
+    gyro_bs = accel_bs = N * 3
+    odom_bs = N
+
+    # 逐条初始对准 (qinit per-trajectory)
+    accel10 = torch.from_numpy(np.ascontiguousarray(batch_arr[:, :10, 10:13]))
+    qinit = _qinit_from_accel(accel10).to(torch_dt).to(dev).contiguous()   # (B,4)
+
+    qdiag = torch.tensor([1e-6, 1e-6, 1e-6, 1e-5, 1e-5, 1e-5, 1e-4, 1e-4, 1e-4,
+                          1e-8, 1e-8, 1e-8, 1e-7, 1e-7, 1e-7], dtype=torch_dt, device=dev).contiguous()
+
+    pos_out = torch.zeros(B, N, 3, dtype=torch_dt, device=dev).contiguous()
+    vel_out = torch.zeros(B, N, 3, dtype=torch_dt, device=dev).contiguous()
+    out_bs = N * 3
+    qinit_bs = 4
+
+    # warmup（编译一次，N 为 runtime 标量）
+    ekf_mega_batch_kernel[(B,)](gyro, accel, odom1, odom2, qinit, qdiag, pos_out, vel_out,
+                                min(N, 64), dt_val, g, 1e-4, 1e-3, 0.01, 1e12,
+                                gyro_bs, accel_bs, odom_bs, out_bs, qinit_bs, DT, IP)
+    torch.cuda.synchronize()
+    pos_out.zero_(); vel_out.zero_()
+
+    t_start = time.time()
+    ekf_mega_batch_kernel[(B,)](gyro, accel, odom1, odom2, qinit, qdiag, pos_out, vel_out,
+                                N, dt_val, g, 1e-4, 1e-3, 0.01, 1e12,
+                                gyro_bs, accel_bs, odom_bs, out_bs, qinit_bs, DT, IP)
+    torch.cuda.synchronize()
+    elapsed = time.time() - t_start
+
+    # 正确性: 每条轨迹相对其各自真值的 RMSE，报跨轨迹分布
+    err = pos_out.double() - pos_true_all            # (B,N,3) fp64
+    rmse = torch.sqrt((err ** 2).mean(1)) * 1000     # (B,3) mm
+    total_steps = B * (N - 1)
+    metrics = {
+        'version': f'v5_independent_{precision}', 'device': 'cuda', 'precision': precision,
+        'batch': B, 'n_steps': N, 'input_mode': 'independent_seeds',
+        'elapsed_s': elapsed,
+        'throughput_steps_per_s': total_steps / elapsed,
+        'throughput_traj_per_s': B / elapsed,
+        'rmse_x_mm_mean': float(rmse[:, 0].mean()), 'rmse_x_mm_std': float(rmse[:, 0].std()),
+        'rmse_y_mm_mean': float(rmse[:, 1].mean()), 'rmse_y_mm_std': float(rmse[:, 1].std()),
+        'rmse_z_mm_mean': float(rmse[:, 2].mean()), 'rmse_z_mm_std': float(rmse[:, 2].std()),
+        'rmse_x_mm_traj0': float(rmse[:, 0][0]), 'rmse_y_mm_traj0': float(rmse[:, 1][0]),
+        'rmse_z_mm_traj0': float(rmse[:, 2][0]),
+    }
+    if verbose:
+        print(f"[v5-indep B={B} {precision}] n={N} elapsed={elapsed:.4f}s "
+              f"({metrics['throughput_steps_per_s']:.0f} steps/s, "
+              f"{metrics['throughput_traj_per_s']:.1f} traj/s)")
+        print(f"  RMSE mm (mean±std across B): X={rmse[:,0].mean():.3f}±{rmse[:,0].std():.3f} "
+              f"Y={rmse[:,1].mean():.3f}±{rmse[:,1].std():.3f} Z={rmse[:,2].mean():.3f}±{rmse[:,2].std():.3f}")
+    return pos_out, vel_out, pos_true_all, t[:N], metrics
 
 
 if __name__ == '__main__':
