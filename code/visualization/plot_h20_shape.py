@@ -7,6 +7,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIGURE_DIR = REPO_ROOT / 'data' / 'figures'
 FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 
+
+def _tag():
+    """按可用结果文件自动判定硬件标签（a100 优先于 h20）。"""
+    if (REPO_ROOT / 'data/results/a100_scaling_d.json').exists():
+        return 'a100'
+    return 'h20'
+
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
 plt.rcParams['mathtext.fontset'] = 'stix'
@@ -27,8 +34,9 @@ SERIES = [
 def _read(name):
     return json.load(open(REPO_ROOT / f'data/results/{name}.json'))
 
-djson = _read('h20_scaling_d')
-mjson = _read('h20_scaling_m')
+TAG = _tag()
+djson = _read(f'{TAG}_scaling_d')
+mjson = _read(f'{TAG}_scaling_m')
 
 drows = djson['d_sweep']
 mrows = mjson['m_sweep']
@@ -85,14 +93,21 @@ ax.tick_params(colors=MUTED, labelsize=8.5)
 for sp in ax.spines.values():
     sp.set_color('#c3c2b7')
 
-# 标注领先倍数
+# 标注领先倍数（按本机数据动态计算）
 triton_y = [data_map[label]['triton'] for label in x_labels]
-ax.annotate('Trident up to 2.4× vs Särkkä\n& 45–160× vs tensor baselines',
+prefix_ratio = [data_map[l]['triton'] / data_map[l]['prefix'] for l in x_labels]
+eager_ratio = [data_map[l]['triton'] / data_map[l]['eager'] for l in x_labels]
+tensor_lo = min(min(data_map[l][k] for k in ('eager', 'compile', 'torch_kf')) for l in x_labels)
+tensor_hi = max(max(data_map[l][k] for k in ('eager', 'compile', 'torch_kf')) for l in x_labels)
+ax.annotate(f'Trident up to {max(prefix_ratio):.1f}× vs Särkkä\n'
+            f'& {min(eager_ratio):.0f}–{max(eager_ratio):.0f}× vs tensor baselines',
             xy=(8, triton_y[8]), xytext=(3.5, 650000),
             fontsize=9.5, color=GREEN, fontweight='bold',
             arrowprops=dict(arrowstyle='->', color=GREEN, lw=1.2))
 
-ax.text(x_labels.index('(6,3)'), 1800, 'Tensor baselines ≈ 3–4.5k steps/s', fontsize=8.5, color=MUTED, ha='left')
+ax.text(x_labels.index('(6,3)'), 1800,
+        f'Tensor baselines ≈ {tensor_lo/1e3:.1f}–{tensor_hi/1e3:.1f}k steps/s',
+        fontsize=8.5, color=MUTED, ha='left')
 
 ax.set_title(f'End-to-End Filter Throughput across $(d, m)$ Configurations ({_gpu}, N=2000, fp32, B=1)',
              fontsize=11.5, color=INK, pad=12)
@@ -100,7 +115,7 @@ ax.set_title(f'End-to-End Filter Throughput across $(d, m)$ Configurations ({_gp
 fig.legend(frameon=False, loc='lower center', ncol=5, bbox_to_anchor=(0.5, -0.06), fontsize=9, handlelength=1.4)
 fig.tight_layout(rect=[0, 0.02, 1, 0.99])
 
-fig.savefig(FIGURE_DIR / 'h20_shape_throughput.pdf', bbox_inches='tight')
-fig.savefig(FIGURE_DIR / 'h20_shape_throughput.png', bbox_inches='tight', dpi=200)
+fig.savefig(FIGURE_DIR / f'{TAG}_shape_throughput.pdf', bbox_inches='tight')
+fig.savefig(FIGURE_DIR / f'{TAG}_shape_throughput.png', bbox_inches='tight', dpi=200)
 plt.close(fig)
-print('Saved: data/figures/h20_shape_throughput.pdf / .png')
+print(f'Saved: data/figures/{TAG}_shape_throughput.pdf / .png')

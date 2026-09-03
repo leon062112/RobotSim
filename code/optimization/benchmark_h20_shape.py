@@ -1,8 +1,8 @@
 """
 H20 全量 (d,m) shape benchmark —— 5 条方法线（eager/compile/torch-kf/prefix/triton）。
 
-由于现网 a100_scaling_*.json 均为 A100/108SM 数据，本脚本在 H20/78SM 上重跑全部方法，
-保证最终图 5 条线同机同源。输出 h20_scaling_d.json 与 h20_scaling_m.json。
+同机同源的全量 (d,m) shape benchmark —— 5 条方法线（eager/compile/torch-kf/prefix/triton）。
+输出文件名按当前 GPU 自动命名：A100 → a100_scaling_d/m.json，H20 → h20_scaling_d/m.json。
 
 用法：python code/optimization/benchmark_h20_shape.py [--quick]
 """
@@ -79,6 +79,8 @@ def main():
 
     hw = {'gpu': torch.cuda.get_device_name(0),
           'sm': torch.cuda.get_device_properties(0).multi_processor_count}
+    gpu = hw['gpu'].lower()
+    tag = 'h20' if 'h20' in gpu else ('a100' if 'a100' in gpu else 'gpu')
 
     if args.quick:
         d_results = run_sweep('d', [15], fixed_d=15, fixed_m=3)
@@ -90,9 +92,9 @@ def main():
     out_d = {'N': N, 'hardware': hw, 'd_sweep': d_results}
     out_m = {'N': N, 'd': 15, 'hardware': hw, 'm_sweep': m_results}
 
-    json.dump(out_d, open('data/results/h20_scaling_d.json', 'w'), indent=2, ensure_ascii=False)
-    json.dump(out_m, open('data/results/h20_scaling_m.json', 'w'), indent=2, ensure_ascii=False)
-    print(f'\nsaved -> data/results/h20_scaling_d.json / h20_scaling_m.json')
+    json.dump(out_d, open(f'data/results/{tag}_scaling_d.json', 'w'), indent=2, ensure_ascii=False)
+    json.dump(out_m, open(f'data/results/{tag}_scaling_m.json', 'w'), indent=2, ensure_ascii=False)
+    print(f'\nsaved -> data/results/{tag}_scaling_d.json / {tag}_scaling_m.json')
 
 
 if __name__ == '__main__':
