@@ -393,10 +393,32 @@ On the evaluated Hopper GPU, Triton lowers eligible \texttt{tl.dot} operations t
 \subsection{Experimental Setup}
 \label{subsec:experimental-setup}
 
-Experiments use an NVIDIA Hopper GPU with 78 SMs, PyTorch 2.11.0, CUDA 12.9, and Triton 3.6.0. The principal dataset contains 166,667 samples. The CPU eager fp64 implementation is used as the numerical golden reference. Reported GPU timings exclude compilation and use warm-up runs with the same problem shape as the measured execution. Throughput is reported in processed filter steps per second and, for batch experiments, trajectories per second.
+Experiments are conducted on the two NVIDIA GPUs summarized in \Cref{tab:experimental-platform}. The principal workload is the downhole positioning dataset with a $15$-dimensional error state and $166{,}667$ sensor samples per trajectory, augmented by batch variants, and the CPU eager fp64 implementation serves as the numerical golden reference.
 
-% TODO: Add the exact GPU model, CPU model, memory configuration, driver,
-% operating system, compiler flags, and number of repeated measurements.
+\begin{table}[!t]
+  \centering
+  \caption{Experimental platform and software stack.}
+  \label{tab:experimental-platform}
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    Item & A100 & H20 \\
+    \midrule
+    GPU model & SXM4-80GB & H20 \\
+    Streaming multiprocessors & 108 & 78 \\
+    Compute capability & 8.0 & 9.0 \\
+    Device memory & 80\,GB HBM2e & 96\,GB HBM3 \\
+    \midrule
+    PyTorch & \multicolumn{2}{c}{2.11.0} \\
+    CUDA & \multicolumn{2}{c}{12.9} \\
+    Triton & \multicolumn{2}{c}{3.6.0} \\
+    Batched library baseline & \multicolumn{2}{c}{\texttt{torch-kf}} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+All fused kernels are written as a single Triton program. Reported timings exclude kernel compilation and autotuning and use warm-up runs of the same shape as the measured execution; each configuration is timed at least three times after synchronization and the mean is reported. Throughput is reported in filter steps per second, and in trajectories per second for batch experiments.
+
+The comparative methods are: (i) \texttt{torch} eager, a per-step tensor implementation using \texttt{torch.linalg.inv}; (ii) \texttt{torch.compile}, Inductor auto-fusion of the single-step function (about eighteen dispatches per step); (iii) \texttt{torch-kf}, a domain batched Kalman filtering library; (iv) \textsc{PrefixScan}, the temporal-parallel prefix-sum scan of S\"arkk\"a and Garc\'ia-Fern\'andez~\cite{sarkka2021temporal}, which combines batched dense matrices through cuBLAS and cuSOLVER; and (v) \textsc{Trident}, the fused whole-scan Triton kernel of this paper. Methods (iii) and (iv) assume a linear filtering core and are therefore applied only to the linear workloads of the corresponding experiments.
 
 \subsection{End-to-End Performance}
 \label{subsec:end-to-end}
@@ -421,15 +443,36 @@ Experiments use an NVIDIA Hopper GPU with 78 SMs, PyTorch 2.11.0, CUDA 12.9, and
 
 This subsection will separate latency improvements for one trajectory from aggregate throughput improvements for batches. It will also reconcile performance values from different experiment rounds using the archived JSON results as the final source of truth.
 
-\subsection{Effect of Kernel Fusion}
-\label{subsec:fusion-evaluation}
-
-This subsection will compare eager execution, compile-friendly restructuring, CUDA Graph replay, and the Triton mega-kernel. Profiler evidence will include kernel counts, launch intervals, time spent in solver calls, global-memory traffic, register use, and achieved SM throughput.
-
 \subsection{Accuracy and Precision Trade-offs}
 \label{subsec:precision-evaluation}
 
-The precision study will report throughput together with final-state deviation and X/Y/Z RMSE. The main comparison includes fp64, fp32, TensorFloat-32 matrix products, fp16 sensor input, and bfloat16 variants. Negative results are retained because they identify when reduced precision is unsafe in a long recursive filter.
+The precision study compares complete output trajectories rather than isolated filter steps: every method processes the same $166{,}667$-sample trajectory, and each result is scored by the per-axis position RMSE against the ground-truth trajectory and by the maximum axis-wise deviation from the fp64 CPU reference. Short shared-prefix checks are insufficient here, because \Cref{subsec:motivation-precision} shows that rounding error in recurrent quantities accumulates over the full horizon, which a truncated run would understate.
+
+\Cref{tab:precision-fidelity} compares the numerical accuracy and throughput of the tensor baselines and of \textsc{Trident} under different precision plans on the H20 device. The eager and \texttt{torch.compile} implementations evaluate the same expressions as the reference, and their trajectories agree with it to the last printed digit on their shared prefix; full-length timing and accuracy runs for these two baselines are pending for the final manuscript. \textsc{Trident} in fp64 reproduces the reference to within $0.13$\,mm on every axis, and the adopted fp32 plan deviates by at most $0.13$\,mm---more than four orders of magnitude below the $1{,}017.8$\,mm reference positioning error itself. The accelerated implementations are therefore not less accurate than the tensor baselines: every configuration listed as safe matches the reference at or below the filter's own error scale while running up to two orders of magnitude faster. On the A100 device the same comparison holds with an even smaller TF32 deviation ($0.63$\,mm versus $4.71$\,mm), while the fp64 and fp32 throughputs differ from the values in the table.
+
+The reduced-precision plans document where this equivalence breaks. Lowering only the sensor input to fp16 adds at most $2.19$\,mm and, as \Cref{tab:precision-isolation} shows, remains within the acceptance band, but it does not shorten the critical path and is therefore not adopted. Uniform reductions across the whole estimator, in contrast, are unsafe: bfloat16 sensor input inflates the vertical RMSE from $8.14$ to $1{,}014.1$\,mm, and fp16 storage of the recurrent state diverges over the horizon. TF32 matrix products deviate by $4.82$\,mm on this device and are slower than fp32, so the Tensor Core path is dominated on both axes. These rows are retained because they delimit the precision space in which the component-aware scheme of \Cref{subsec:mixed-precision} operates.
+
+The remaining baselines are compared on the linear filtering core that they support. There the batched \texttt{torch-kf} implementation and the \textsc{PrefixScan} of S\"arkk\"a and Garc\'ia-Fern\'andez reproduce the sequential fp64 recursion to within $10^{-14}$ in fp64 and $3\times10^{-7}$ in fp32 at the final state, so their throughput differences do not come at the cost of accuracy; their precision on the nonlinear SINS/EKF workload is not reported because both methods assume a linear core. Finally, batch execution does not perturb numerical results: identical trajectories replicated across blocks agree bit-exactly (maximum cross-block spread $0$\,m), and independently seeded Monte Carlo trajectories at $B{=}108$ show an ensemble RMSE of $1008.9\pm97.0$\,mm in X, a genuine trajectory-to-trajectory spread rather than an implementation artifact.
+
+\begin{table*}[!t]
+  \centering
+  \caption{Trajectory-level accuracy and throughput on the H20 GPU over the full $166{,}667$-step trajectory. $\Delta$ is the maximum axis-wise deviation from the fp64 CPU reference; the reference positioning error is $1{,}017.8$\,mm RMSE in X. Timings for \texttt{torch} eager and \texttt{torch.compile} over the full horizon are pending.}
+  \label{tab:precision-fidelity}
+  \begin{tabular}{@{}llrrrl@{}}
+    \toprule
+    Implementation & Precision & Steps/s & RMSE X (mm) & Max $\Delta$ (mm) & Status \\
+    \midrule
+    CPU eager (reference) & fp64 & 1,866 & 1,017.838 & --- & reference \\
+    CUDA Graph & fp64 & 2,640 & 1,017.843 & 0.005 & bit-faithful \\
+    \textsc{Trident} & fp64 & 16,491 & 1,017.842 & 0.128 & safe \\
+    \textsc{Trident} & fp32 & 242,737 & 1,017.730 & 0.129 & adopted \\
+    \textsc{Trident} & fp16 input & 249,785 & 1,017.841 & 2.188 & safe, no gain \\
+    \textsc{Trident} & TF32 dots & 208,077 & 1,022.550 & 4.820 & reject \\
+    \textsc{Trident} & bf16 input & 250,143 & 1,028.743 & 1,005.840 & reject \\
+    \textsc{Trident} & fp16 state & 252,808 & 281,771.447 & diverged & reject \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
 
 \subsection{Batch Scalability and Resource Saturation}
 \label{subsec:batch-evaluation}

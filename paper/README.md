@@ -18,3 +18,12 @@ latexmk -pdf main.tex
 cd paper/latex
 latexmk -C main.tex
 ```
+
+
+实验分为五个章节
+
+- 实验介绍 shape 硬件
+- 端到端性能
+- 精度对比，（baseline，其他方法，体现我们的优势）
+- abaltion （）
+- overhead
