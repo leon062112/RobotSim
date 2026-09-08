@@ -1,0 +1,90 @@
+"""
+消融图: 贡献组合 x 轨迹长度 N (端到端 SINS/EKF 工作负载, A100)。
+
+数据: data/results/a100_ablation_shape.json (benchmark_ablation_shape.py)
+输出: data/figures/ablation_shape.{png,pdf} -> paper/latex/figures/5-eval-ablation-a100.pdf
+"""
+import json
+import shutil
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FIGURE_DIR = REPO_ROOT / 'data' / 'figures'
+PAPER_FIG_DIR = REPO_ROOT / 'paper' / 'latex' / 'figures'
+
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
+plt.rcParams['mathtext.fontset'] = 'stix'
+plt.rcParams['axes.unicode_minus'] = False
+
+# CVD-safe 分类色 (与 plot_d_shape.py 相同 palette)
+BLUE, AQUA, YELLOW, GREEN = '#2a78d6', '#1baf7a', '#eda100', '#008300'
+INK, MUTED = '#0b0b0b', '#898781'
+
+# (json key, label, color, marker, linestyle, linewidth, zorder)
+SERIES = [
+    ('none',             'baseline (eager fp64)',           MUTED,  'v', '--', 1.4, 2),
+    ('precision_only',   '+ precision (eager fp32)',        BLUE,   's', '--', 1.4, 2),
+    ('batch_only',       '+ batch (eager fp64, $B{=}108$)', YELLOW, 'D', '-',  1.6, 3),
+    ('fusion_only',      '+ fusion (fused fp64)',           AQUA,   '^', '-',  1.8, 3),
+    ('fusion_precision', '+ fusion + precision (fused fp32)', GREEN, 'o', '--', 1.6, 3),
+    ('all',              'Trident (all three, $B{=}108$)', GREEN, 'o', '-', 2.6, 4),
+]
+
+
+def main():
+    d = json.load(open(REPO_ROOT / 'data/results/a100_ablation_shape.json'))
+    combos = d['combos']
+    B = d['batch']
+
+    cpu = json.load(open(REPO_ROOT / 'data/results/a100_benchmark_summary.json'))
+    cpu_fp64 = cpu['v0_cpu']['throughput_steps_per_s']
+
+    fig, ax = plt.subplots(figsize=(7.6, 4.4), dpi=200)
+
+    for key, label, color, mkr, ls, lw, z in SERIES:
+        pts = combos[key]
+        x = [p['n'] for p in pts]
+        y = [p['throughput'] for p in pts]
+        mfc = 'white' if key == 'fusion_precision' else color
+        ax.plot(x, y, linestyle=ls, marker=mkr, color=color, linewidth=lw,
+                markersize=6, markeredgecolor=color, markeredgewidth=1.0,
+                markerfacecolor=mfc, label=label, zorder=z)
+
+    ax.axhline(cpu_fp64, color=MUTED, linestyle=':', linewidth=1.4, zorder=1)
+    ax.text(2100, cpu_fp64 * 1.25, f'host CPU fp64 ({cpu_fp64:,.0f} steps/s)',
+            fontsize=8.5, color=MUTED)
+
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xticks([2000, 5000, 20000, 50000, 166667])
+    ax.get_xaxis().set_major_formatter(plt.FuncFormatter(lambda v, _: f'{int(v):,}'))
+    ax.set_yticks([1e2, 1e3, 1e4, 1e5, 1e6, 1e7])
+    ax.get_yaxis().set_major_formatter(
+        plt.FuncFormatter(lambda v, _: f'$10^{{{int(np.log10(v))}}}$'))
+    ax.set_xlabel('Trajectory length $N$ (filter steps, log)', fontsize=10.5, color=INK)
+    ax.set_ylabel('Throughput (filter steps/s, log)', fontsize=10.5, color=INK)
+    ax.grid(axis='y', which='major', linestyle='--', linewidth=0.7, color='#e1e0d9', zorder=0)
+    ax.tick_params(colors=MUTED, labelsize=8.5)
+    for sp in ax.spines.values():
+        sp.set_color('#c3c2b7')
+
+    leg = ax.legend(fontsize=8.5, loc='upper left', framealpha=0.95,
+                    edgecolor='#c3c2b7', labelcolor=INK)
+    leg.set_zorder(5)
+
+    fig.tight_layout()
+    for ext in ('png', 'pdf'):
+        out = FIGURE_DIR / f'ablation_shape.{ext}'
+        fig.savefig(out)
+        print('saved ->', out)
+    dst = PAPER_FIG_DIR / '5-eval-ablation-a100.pdf'
+    shutil.copy(FIGURE_DIR / 'ablation_shape.pdf', dst)
+    print('copied ->', dst)
+
+
+if __name__ == '__main__':
+    main()

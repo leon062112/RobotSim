@@ -210,7 +210,9 @@ def run_prefix(F, H, Q, R, z, N, dtype=torch.float32):
 @triton.jit
 def lin_scan_kernel(
     F_ptr, H_ptr, Q_ptr, R_ptr, z_ptr, pout_ptr,
-    N, M: tl.constexpr, T: tl.constexpr,
+    xout_ptr, Pout_ptr,
+    N, M: tl.constexpr, T: tl.constexpr, STORE_FULL: tl.constexpr,
+    IP: tl.constexpr,
 ):
     i = tl.arange(0, T)
     j = tl.arange(0, T)
@@ -230,12 +232,12 @@ def lin_scan_kernel(
     for k in range(0, N):
         # predict
         x = tl.sum(F * x[None, :], axis=1)
-        FP = tl.dot(F, P)
-        P = tl.dot(FP, tl.trans(F)) + Q
+        FP = tl.dot(F, P, input_precision=IP)
+        P = tl.dot(FP, tl.trans(F), input_precision=IP) + Q
 
         # S = H P H^T + R  (m×m 块)
-        HP = tl.dot(H, P)
-        S = tl.dot(HP, tl.trans(H)) + Rm
+        HP = tl.dot(H, P, input_precision=IP)
+        S = tl.dot(HP, tl.trans(H), input_precision=IP) + Rm
 
         # ---- 高斯-约当消元求 S^-1 (m×m 块)，每枢轴一次 rank-1 更新，O(m·d²) ----
         A = S
@@ -258,22 +260,28 @@ def lin_scan_kernel(
         Si = B
 
         # K = P H^T S^-1 ; update mean + cov
-        PHt = tl.dot(P, tl.trans(H))
-        K = tl.dot(PHt, Si)
+        PHt = tl.dot(P, tl.trans(H), input_precision=IP)
+        K = tl.dot(PHt, Si, input_precision=IP)
         zvec = tl.load(z_ptr + k * M + i, mask=i < M, other=0.0)
         hx = tl.sum(H * x[None, :], axis=1)      # T-vec，前 M 个 = H @ x
         innov = zvec - hx
         x = x + tl.sum(K * innov[None, :], axis=1)
-        KH = tl.dot(K, H)
-        P = tl.dot(eye - KH, P)
+        KH = tl.dot(K, H, input_precision=IP)
+        P = tl.dot(eye - KH, P, input_precision=IP)
 
     tr = tl.sum(P * eye)
     tl.store(pout_ptr + 0, tr)
     tl.store(pout_ptr + 1, tl.sum(tl.where(i == 0, x, 0.0)))
     tl.store(pout_ptr + 2, tl.sum(tl.where(i == 1, x, 0.0)))
+    if STORE_FULL:
+        # 精度对拍模式：导出完整终态 (x, P)，性能路径不启用
+        tl.store(xout_ptr + i, x)
+        tl.store(Pout_ptr + r * T + c, P)
 
 
-def run_triton(F, H, Q, R, z, N, warmup=True):
+def run_triton(F, H, Q, R, z, N, warmup=True, full=False, ip='tf32'):
+    """ip: tl.dot 的 input_precision。历史默认 'tf32'（保持与归档吞吐轮一致）；
+    精度对拍用 'ieee'。"""
     d = F.shape[0]
     m = H.shape[0]
     T = max(next_pow2(d), 16)
@@ -288,12 +296,20 @@ def run_triton(F, H, Q, R, z, N, warmup=True):
     Rpad[:m, :m] = R
     zc = z[:N].contiguous()
     pout = torch.zeros(4, dtype=torch.float32, device=dev)
+    if full:
+        xout = torch.zeros(T, dtype=torch.float32, device=dev)
+        Pout = torch.zeros(T, T, dtype=torch.float32, device=dev)
+    else:
+        xout = Pout = pout   # dummy 指针，STORE_FULL=False 时不被写
 
     grid = (1,)
     if warmup:
-        lin_scan_kernel[grid](Fpad, Hpad, Qpad, Rpad, zc, pout, min(N, 32), m, T)
+        lin_scan_kernel[grid](Fpad, Hpad, Qpad, Rpad, zc, pout, xout, Pout,
+                              min(N, 32), m, T, full, ip)
         torch.cuda.synchronize()
         pout.zero_()
-    lin_scan_kernel[grid](Fpad, Hpad, Qpad, Rpad, zc, pout, N, m, T)
+    lin_scan_kernel[grid](Fpad, Hpad, Qpad, Rpad, zc, pout, xout, Pout, N, m, T, full, ip)
     torch.cuda.synchronize()
+    if full:
+        return xout[:d].clone(), Pout[:d, :d].clone()
     return pout

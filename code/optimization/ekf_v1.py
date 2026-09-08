@@ -130,8 +130,9 @@ def ekf_step(pos_prev, vel_prev, q_prev, P, gyro_prev, accel_prev,
 
 
 def run_ekf_v1(csv_path='data/trajectory/PipeRobot_Trajectory.csv', device='cpu', n_steps=None,
-               compile_mode=None, verbose=True):
+               compile_mode=None, precision='fp64', verbose=True):
     dev = torch.device(device)
+    dtype = torch.float64 if precision == 'fp64' else torch.float32
     data = np.loadtxt(csv_path, delimiter=',', skiprows=1)
     t = torch.from_numpy(data[:, 0]).to(dev)
     dt = (t[1:] - t[:-1]).mean().item()
@@ -139,14 +140,13 @@ def run_ekf_v1(csv_path='data/trajectory/PipeRobot_Trajectory.csv', device='cpu'
     if n_steps is not None:
         n = min(n, n_steps)
 
-    gyro = torch.from_numpy(data[:, 7:10]).to(dev)
-    accel = torch.from_numpy(data[:, 10:13]).to(dev)
-    odom1 = torch.from_numpy(data[:, 13]).to(dev)
-    odom2 = torch.from_numpy(data[:, 14]).to(dev)
-    pos_true = torch.from_numpy(data[:, 1:4]).to(dev)
+    gyro = torch.from_numpy(data[:, 7:10]).to(dev, dtype)
+    accel = torch.from_numpy(data[:, 10:13]).to(dev, dtype)
+    odom1 = torch.from_numpy(data[:, 13]).to(dev, dtype)
+    odom2 = torch.from_numpy(data[:, 14]).to(dev, dtype)
+    pos_true = torch.from_numpy(data[:, 1:4]).to(dev, dtype)
 
     g = 9.81
-    dtype = torch.float64
     g_vec = torch.tensor([0, 0, g], dtype=dtype, device=dev)
     I15 = torch.eye(15, dtype=dtype, device=dev)
     I3 = torch.eye(3, dtype=dtype, device=dev)
@@ -211,6 +211,7 @@ def run_ekf_v1(csv_path='data/trajectory/PipeRobot_Trajectory.csv', device='cpu'
 
     metrics = {
         'version': 'v1', 'device': device, 'compile_mode': compile_mode,
+        'precision': precision,
         'n_steps': n, 'elapsed_s': elapsed,
         'throughput_steps_per_s': (n - 1) / elapsed,
         'rmse_x_mm': rmse_x, 'rmse_y_mm': rmse_y, 'rmse_z_mm': rmse_z,

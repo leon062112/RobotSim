@@ -1,0 +1,80 @@
+{
+  "hardware": {
+    "gpu_name": "NVIDIA A100-SXM4-80GB",
+    "sm_count": 108,
+    "total_memory_gb": 85.2,
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "470.82.01",
+    "cuda_version": "12.8",
+    "torch_version": "2.9.1+cu128",
+    "triton_version": "3.5.1"
+  },
+  "golden": {
+    "rmse_x_mm": 1017.838305,
+    "rmse_y_mm": 16.834549,
+    "rmse_z_mm": 8.140964,
+    "rho_pct": 0.17554
+  },
+  "n_steps": 166667,
+  "cpu_fp64_reference": {
+    "device": "cpu",
+    "n_steps": 166667,
+    "elapsed_s": 163.42871713638306,
+    "throughput_steps_per_s": 1019.808531329995,
+    "rmse_x_mm": 1017.8383054095568,
+    "rmse_y_mm": 16.834549466927633,
+    "rmse_z_mm": 8.140964166802213,
+    "x_error_mm": 877.6951296280799,
+    "l_m": 499.998,
+    "rho_pct": 0.17553972808452833,
+    "golden_match": true,
+    "max_delta_mm": 0.0
+  },
+  "v0_gpu_eager_full": {
+    "device": "cuda",
+    "n_steps": 166667,
+    "elapsed_s": 543.0236573219299,
+    "throughput_steps_per_s": 306.9221713506168,
+    "rmse_x_mm": 1017.8383054094835,
+    "rmse_y_mm": 16.834549466927562,
+    "rmse_z_mm": 8.14096416680223,
+    "x_error_mm": 877.6951296279663,
+    "l_m": 499.998,
+    "rho_pct": 0.17553972808450558,
+    "max_delta_mm": 1.7053025658242404e-10,
+    "throughput_steps_per_s_mean": 309.0567439655459,
+    "throughput_steps_per_s_std": 1.904240805298301,
+    "throughput_steps_per_s_reps": [
+      308.702095189914,
+      311.545965356107,
+      306.9221713506168
+    ],
+    "n_repeats": 3,
+    "golden_match": true
+  },
+  "v1_gpu_compile_full": {
+    "version": "v1",
+    "device": "cuda",
+    "compile_mode": "default",
+    "n_steps": 166667,
+    "elapsed_s": 125.04413270950317,
+    "throughput_steps_per_s": 1332.8574191257005,
+    "rmse_x_mm": 1017.8383054095284,
+    "rmse_y_mm": 16.83454946692771,
+    "rmse_z_mm": 8.140964166802181,
+    "rho_pct": 0.17553972808451695,
+    "max_delta_mm": 1.1368683772161603e-10,
+    "throughput_steps_per_s_mean": 1391.4778489392227,
+    "throughput_steps_per_s_std": 50.957716314306225,
+    "throughput_steps_per_s_reps": [
+      1457.0891269752146,
+      1384.4870007167526,
+      1332.8574191257005
+    ],
+    "n_repeats": 3,
+    "golden_match": true
+  }
+}

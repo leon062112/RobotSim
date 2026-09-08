@@ -1,0 +1,87 @@
+{
+  "hardware": {
+    "gpu_name": "NVIDIA A100-SXM4-80GB",
+    "sm_count": 108,
+    "total_memory_gb": 85.2,
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "470.82.01",
+    "cuda_version": "12.8",
+    "torch_version": "2.9.1+cu128",
+    "triton_version": "3.5.1"
+  },
+  "golden": {
+    "rmse_x_mm": 1017.838305,
+    "rmse_y_mm": 16.834549,
+    "rmse_z_mm": 8.140964,
+    "rho_pct": 0.17554
+  },
+  "n_steps": 166667,
+  "trident_fp64": {
+    "version": "v3_triton_mega",
+    "device": "cuda",
+    "n_steps": 166667,
+    "elapsed_s": 2.4206955432891846,
+    "throughput_steps_per_s": 68850.45930788064,
+    "rmse_x_mm": 1017.8420960557057,
+    "rmse_y_mm": 16.835871912267937,
+    "rmse_z_mm": 8.269423375886513,
+    "rho_pct": 0.17553928608436511,
+    "max_delta_mm": 0.3082216037312152,
+    "throughput_steps_per_s_mean": 68969.7052441096,
+    "throughput_steps_per_s_std": 594.2831089365114,
+    "throughput_steps_per_s_reps": [
+      68308.84648076206,
+      69749.80994368612,
+      68850.45930788064
+    ],
+    "n_repeats": 3,
+    "golden_match": true
+  },
+  "trident_fp32": {
+    "version": "v4_triton_fp32",
+    "device": "cuda",
+    "precision": "fp32",
+    "n_steps": 166667,
+    "elapsed_s": 1.3677012920379639,
+    "throughput_steps_per_s": 121858.47960387375,
+    "rmse_x_mm": 1017.7302903425434,
+    "rmse_y_mm": 16.83665060728502,
+    "rmse_z_mm": 8.269509606444574,
+    "rho_pct": 0.175747972852056,
+    "max_delta_mm": 4.282972905400584,
+    "throughput_steps_per_s_mean": 121920.33785432135,
+    "throughput_steps_per_s_std": 294.9580733151539,
+    "throughput_steps_per_s_reps": [
+      121594.01277710752,
+      122308.5211819828,
+      121858.47960387375
+    ],
+    "n_repeats": 3,
+    "golden_match": true
+  },
+  "trident_tf32": {
+    "version": "v4_triton_tf32",
+    "device": "cuda",
+    "precision": "tf32",
+    "n_steps": 166667,
+    "elapsed_s": 1.362675666809082,
+    "throughput_steps_per_s": 122307.90059550595,
+    "rmse_x_mm": 1018.4701177211541,
+    "rmse_y_mm": 17.327529960656573,
+    "rmse_z_mm": 8.538972716550083,
+    "rho_pct": 0.17537564515394644,
+    "max_delta_mm": 5.820748940706721,
+    "throughput_steps_per_s_mean": 125247.87765698362,
+    "throughput_steps_per_s_std": 4194.12374664785,
+    "throughput_steps_per_s_reps": [
+      122256.54215087173,
+      131179.19022457316,
+      122307.90059550595
+    ],
+    "n_repeats": 3,
+    "golden_match": false
+  }
+}
