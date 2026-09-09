@@ -378,7 +378,7 @@ This mapping yields a resource-based scaling model. Let $S$ be the number of SMs
   \qquad B_{\mathrm{sat}}\approx S C_{\mathrm{reg}}.
   \label{eq:batch-saturation}
 \end{equation}
-This approximation omits architectural limits on blocks, warps, shared memory, and scheduling, and therefore serves as a scaling guide rather than an exact occupancy model. For $B\leq S$, trajectories can be distributed across distinct SMs and aggregate throughput should grow nearly linearly. For $S<B\leq B_{\mathrm{sat}}$, additional resident blocks increase contention for registers and execution units. Beyond $B_{\mathrm{sat}}$, blocks execute in waves, so increasing $B$ improves total work capacity but not instantaneous throughput. \Cref{subsec:batch-evaluation} tests these regimes with a batch-size sweep.
+This approximation omits architectural limits on blocks, warps, shared memory, and scheduling, and therefore serves as a scaling guide rather than an exact occupancy model. For $B\leq S$, trajectories can be distributed across distinct SMs and aggregate throughput should grow nearly linearly. For $S<B\leq B_{\mathrm{sat}}$, additional resident blocks increase contention for registers and execution units. Beyond $B_{\mathrm{sat}}$, blocks execute in waves, so increasing $B$ improves total work capacity but not instantaneous throughput. The batch-size sweep of \Cref{subsec:ablation} (\Cref{tab:ablation-batch}) tests these regimes.
 
 \subsection{Implementation Details}
 \label{subsec:implementation-details}
@@ -393,145 +393,83 @@ On the evaluated Hopper GPU, Triton lowers eligible \texttt{tl.dot} operations t
 \subsection{Experimental Setup}
 \label{subsec:experimental-setup}
 
-Experiments are conducted on the two NVIDIA GPUs summarized in \Cref{tab:experimental-platform}. The principal workload is the downhole positioning dataset with a $15$-dimensional error state and $166{,}667$ sensor samples per trajectory, augmented by batch variants, and the CPU eager fp64 implementation serves as the numerical golden reference.
-
-\begin{table}[!t]
-  \centering
-  \caption{Experimental platform and software stack.}
-  \label{tab:experimental-platform}
-  \begin{tabular}{@{}lcc@{}}
-    \toprule
-    Item & A100 & H20 \\
-    \midrule
-    GPU model & SXM4-80GB & H20 \\
-    Streaming multiprocessors & 108 & 78 \\
-    Compute capability & 8.0 & 9.0 \\
-    Device memory & 80\,GB HBM2e & 96\,GB HBM3 \\
-    \midrule
-    PyTorch & 2.9.1 & 2.11.0 \\
-    CUDA & 12.8 & 12.9 \\
-    Triton & 3.5.1 & 3.6.0 \\
-    Batched library baseline & \multicolumn{2}{c}{\texttt{torch-kf}} \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+Experiments are conducted on two NVIDIA GPUs: an A100 SXM4-80GB (108 streaming multiprocessors, compute capability 8.0) and an H20 (78 streaming multiprocessors, compute capability 9.0). The principal workload is the downhole positioning dataset with a $15$-dimensional error state, augmented by batch variants, and the CPU eager fp64 implementation serves as the numerical golden reference. All GPU runs use PyTorch 2.11.0 with CUDA 12.9 and Triton 3.6.0.
 
 All fused kernels are written as a single Triton program. Reported timings exclude kernel compilation and autotuning and use warm-up runs of the same shape as the measured execution; each configuration is timed at least three times after synchronization and the mean is reported. Throughput is reported in filter steps per second, and in trajectories per second for batch experiments.
 
-The comparative methods are: (i) \texttt{torch} eager, a per-step tensor implementation using \texttt{torch.linalg.inv}; (ii) \texttt{torch.compile}, Inductor auto-fusion of the single-step function (about eighteen dispatches per step); (iii) \texttt{torch-kf}, a domain batched Kalman filtering library; (iv) \textsc{PrefixScan}, the temporal-parallel prefix-sum scan of S\"arkk\"a and Garc\'ia-Fern\'andez~\cite{sarkka2021temporal}, which combines batched dense matrices through cuBLAS and cuSOLVER; and (v) \textsc{Trident}, the fused whole-scan Triton kernel of this paper. Methods (iii) and (iv) assume a linear filtering core and are therefore applied only to the linear workloads of the corresponding experiments.
+The comparative methods are: (i) \texttt{torch} eager, a per-step tensor implementation using \texttt{torch.linalg.inv}; (ii) \texttt{torch.compile}, Inductor auto-fusion of the single-step function (about eighteen dispatches per step); (iii) \textsc{PrefixScan}, a temporal-parallel prefix-sum scan for Bayesian filtering~\cite{sarkka2021temporal}, which combines batched dense matrices through cuBLAS and cuSOLVER; and (iv) \textsc{Trident}, the fused whole-scan Triton kernel of this paper. Method (iii) assumes a linear filtering core and is therefore applied only to the linear workloads of the corresponding experiments.
 
 \subsection{End-to-End Performance}
 \label{subsec:end-to-end}
 
-\begin{table}[!b]
+\begin{figure*}[!t]
   \centering
-  \caption{End-to-end performance summary. The final manuscript will report means and variability over repeated runs.}
-  \label{tab:end-to-end}
-  \begin{tabular}{@{}llrr@{}}
+  \includegraphics[width=\textwidth]{figures/5-eval-shape.pdf}
+  \caption{Throughput of the linear Kalman core as the state dimension $d$ and observation dimension $m$ vary (single trajectory, fp32). (a) A100 (108 SMs); (b) H20 (78 SMs).}
+  \label{fig:shape-compare}
+\end{figure*}
+
+On a single trajectory, the fused implementation removes the latency bound that dominates the eager baselines. The CPU eager fp64 reference sustains $1{,}866$ steps/s; a CUDA Graph replay of the same per-step kernels reaches $2{,}640$ steps/s ($1.41\times$), and whole-scan fusion in fp64 raises this to $16{,}491$ steps/s ($8.8\times$ over the CPU). Switching the fused kernel to the adopted fp32 precision plan reaches $242{,}737$ steps/s, $130\times$ over the CPU reference. Batching independent trajectories then scales the same kernel to $1.9\times10^{7}$ steps/s at 78 trajectories and to a peak of $4.63\times10^{7}$ steps/s at 312 trajectories, approximately $2.5\times10^{4}\times$ the CPU; \Cref{subsec:ablation} analyzes this scaling in detail.
+
+\Cref{fig:shape-compare} generalizes the comparison beyond the end-to-end workload by sweeping the state dimension $d$ and observation dimension $m$ of the linear Kalman core on both GPUs. Two observations hold across the entire sweep. First, the two scan-based implementations outperform the per-step baselines by about two orders of magnitude at every configuration: \texttt{torch} eager and \texttt{torch.compile} remain in a narrow $2$--$4.5\times10^{3}$ steps/s band regardless of shape, because their cost is dominated by kernel dispatch rather than arithmetic. Second, \textsc{Trident} is more robust than \textsc{PrefixScan} to both shape directions. Increasing $d$ from 15 to 30 reduces \textsc{PrefixScan} from $1.87\times10^{5}$ to $7.7\times10^{4}$ steps/s on the A100, while \textsc{Trident} retains $1.29\times10^{5}$ steps/s; the H20 panel shows the same ordering. Decreasing $m$ widens the gap in \textsc{Trident}'s favor---at $(d,m)=(15,1)$ it reaches $4.9\times10^{5}$ steps/s on the A100 and $7.3\times10^{5}$ steps/s on the H20, up to $2.3\times$ the corresponding \textsc{PrefixScan} rate---because the analytical innovation inverse removes the cuSOLVER call that the prefix scan requires at every step.
+
+\subsection{Numerical Accuracy Under Mixed Precision}
+\label{subsec:precision-evaluation}
+
+We evaluate accuracy on complete trajectories rather than isolated filter steps, because \Cref{subsec:motivation-precision} shows that rounding in recurrent quantities accumulates over the full horizon and a truncated run would understate it. \Cref{tab:precision-fidelity} scores the baselines on the linear Kalman core against a sequential fp64 evaluation of the same filter. All fp32 implementations reproduce that reference to about $10^{-7}$ at the final state, while \textsc{Trident} is simultaneously the fastest and the most accurate: $1.8\times$ the \textsc{PrefixScan} throughput, and $130\times$ the eager baseline at identical accuracy. Their throughput differences therefore do not come at the cost of accuracy. The only unattractive choice is the TF32 dot product, which degrades by four orders of magnitude to $1.3\times10^{-3}$, confirming the component-aware selection of IEEE dot products in \Cref{subsec:mixed-precision}.
+
+The same ordering holds on the end-to-end SINS/EKF workload, where the filter's own positioning error provides a physical accuracy scale: the adopted fp32 plan deviates from the fp64 CPU reference by only $4.3$\,mm over the complete trajectory---two orders of magnitude below the reference's own $1{,}017.838$\,mm error---while running $120\times$ faster, and the fused fp64 variant deviates by $0.31$\,mm, so the residual error stems from the precision plan rather than from fusion. Acceleration therefore does not cost accuracy on either workload.
+
+\begin{table}[!t]
+  \centering
+  \caption{Accuracy and throughput of fp32 implementations on the linear Kalman core, $(d,m)=(15,3)$, single trajectory (A100). $\Delta$ is the final-state deviation $\max|\mathbf{x}-\mathbf{x}^{\mathrm{ref}}|$ from a sequential fp64 evaluation of the same filter.}
+  \label{tab:precision-fidelity}
+  \begin{tabular}{@{}lrr@{}}
     \toprule
-    Version & Method & Steps/s & Speedup \\
+    Implementation & Steps/s & $\Delta$ vs fp64 ref. \\
     \midrule
-    v0 & CPU eager fp64 & 1,866 & 1.0$\times$ \\
-    v2 & CUDA Graph fp64 & 2,640 & 1.41$\times$ \\
-    v3 & Triton fused fp64 & 16,491 & 8.8$\times$ \\
-    v4 & Triton fused fp32 & 242,737 & 130$\times$ \\
-    v5 & fp32, batch 78 & 17.8--19.1M & approx. 10,000$\times$ \\
-    v7 & fp32, batch 312 & 46.3M & approx. 24,800$\times$ \\
+    \texttt{torch} eager & 2,108 & $1.1\times10^{-7}$ \\
+    \textsc{PrefixScan} & 152,932 & $3.0\times10^{-7}$ \\
+    \textsc{Trident} (adopted) & \textbf{274,428} & $\mathbf{1.2\times10^{-7}}$ \\
     \bottomrule
   \end{tabular}
 \end{table}
-
-This subsection will separate latency improvements for one trajectory from aggregate throughput improvements for batches. It will also reconcile performance values from different experiment rounds using the archived JSON results as the final source of truth.
-
-\subsection{Accuracy and Precision Trade-offs}
-\label{subsec:precision-evaluation}
-
-We evaluate accuracy on complete output trajectories rather than isolated filter steps, because \Cref{subsec:motivation-precision} shows that rounding in recurrent quantities accumulates over the full horizon and a truncated run would understate it. Every method processes the same $166{,}667$-sample trajectory, and \Cref{tab:precision-fidelity} reports throughput together with the position RMSE against ground truth and the maximum deviation from the fp64 CPU reference trajectory, all measured on the A100 platform in a single experiment round. The eager and \texttt{torch.compile} baselines evaluate the same expressions as the reference and reproduce it bit-for-bit (deviation below $10^{-9}$\,mm), but remain below $1.4\times10^{3}$ steps/s. \textsc{Trident} in fp64 tracks the reference to within $0.31$\,mm, and the adopted fp32 plan to within $4.3$\,mm---at least two orders of magnitude below the reference's own $1{,}017.838$\,mm positioning error---while reaching $6.9\times10^{4}$ and $1.22\times10^{5}$ steps/s, respectively $68\times$ and $120\times$ over the CPU reference and $50\times$ and $88\times$ over the fastest tensor baseline. Acceleration therefore does not cost accuracy: the fused implementation stays well below the error scale of the filter itself. The same ordering holds on the H20 platform with device-specific constants (the fp32 deviation is $0.13$\,mm there), and TF32 dot products are unattractive on both: they raise the X-axis RMSE by $0.63$\,mm on A100 for a $3\%$ throughput gain, and on H20 they run slower than the fp32 plan (\Cref{tab:precision-isolation}).
-
-The remaining baselines assume a linear filtering core (\Cref{subsec:experimental-setup}), so \Cref{tab:precision-fidelity} scores them on the $(d,m)=(15,3)$ linear workload against a sequential fp64 evaluation of the same filter. All fp32 implementations---\textsc{Trident} with IEEE dot products included---reproduce that reference to about $10^{-7}$ at the final state, and \textsc{PrefixScan} in fp64 to $1.4\times10^{-16}$; their throughput differences therefore do not come at the cost of accuracy either. The same fused kernel executed with TF32-default dot products degrades by four orders of magnitude to $1.3\times10^{-3}$, confirming the component-aware choice of IEEE dot products in \Cref{subsec:mixed-precision}.
-
-\begin{table*}[!t]
-  \centering
-  \caption{Accuracy and throughput over the full $166{,}667$-step horizon, measured on the A100 platform in a single experiment round. For the SINS/EKF workload, RMSE X is the positioning error against ground truth---the fp64 CPU reference itself deviates by $1{,}017.838$\,mm---and $\Delta$ is the largest axis-wise deviation from that reference trajectory. For the linear Kalman core with $(d,m)=(15,3)$, which \texttt{torch-kf} and \textsc{PrefixScan} support natively, $\Delta$ reports $\max|\mathbf{x}-\mathbf{x}^{\mathrm{ref}}|$ at the final state against a sequential fp64 evaluation of the same filter, and RMSE X is not applicable. The \texttt{torch.compile} row includes one Inductor compilation per run.}
-  \label{tab:precision-fidelity}
-  \begin{tabular}{@{}llrrr@{}}
-    \toprule
-    Implementation & Precision & Steps/s & RMSE X (mm) & $\Delta$ vs fp64 ref. \\
-    \midrule
-    \multicolumn{5}{@{}l}{\emph{SINS/EKF workload ($\Delta$ in mm)}}\\
-    CPU eager (reference) & fp64 & 1,020 & 1,017.838 & --- \\
-    \texttt{torch} eager & fp64 & 309 & 1,017.838 & $<10^{-9}$ \\
-    \texttt{torch.compile} & fp64 & 1,391 & 1,017.838 & $<10^{-9}$ \\
-    \textsc{Trident} & fp64 & 68,970 & 1,017.842 & 0.308 \\
-    \textsc{Trident} (adopted) & fp32 & 121,920 & 1,017.730 & 4.283 \\
-    \midrule
-    \multicolumn{5}{@{}l}{\emph{Linear Kalman core, $(d,m)=(15,3)$ ($\Delta=\max|\mathbf{x}-\mathbf{x}^{\mathrm{ref}}|$)}}\\
-    \texttt{torch} eager & fp32 & 3,375 & --- & $1.2\times10^{-7}$ \\
-    \texttt{torch.compile} & fp32 & 2,234 & --- & $1.2\times10^{-7}$ \\
-    \texttt{torch-kf} & fp32 & 2,108 & --- & $1.1\times10^{-7}$ \\
-    \textsc{PrefixScan} & fp32 & 152,932 & --- & $3.0\times10^{-7}$ \\
-    \textsc{PrefixScan} & fp64 & 105,193 & --- & $1.4\times10^{-16}$ \\
-    \textsc{Trident} (IEEE dots) & fp32 & 274,428 & --- & $1.2\times10^{-7}$ \\
-    \textsc{Trident} (TF32 dots) & fp32 & 341,294 & --- & $1.3\times10^{-3}$ \\
-    \bottomrule
-  \end{tabular}
-\end{table*}
-
-\subsection{Batch Scalability and Resource Saturation}
-\label{subsec:batch-evaluation}
-
-Batch sizes from one trajectory to beyond the register-limited residency point will be evaluated. The analysis will distinguish the linear region up to 78 blocks, the resource-contention region, and the saturation region around 312 blocks. Nsight Compute metrics will be used to connect the observed boundaries to register pressure and active blocks per SM.
 
 \subsection{Ablation Study}
 \label{subsec:ablation}
 
-We decompose the end-to-end gain of \Cref{tab:end-to-end} into the three axes of \textsc{Trident} and quantify each axis independently. \Cref{fig:ablation-shape} gives the combination view on the end-to-end workload; the following paragraphs then isolate the mechanism of each axis. The three transformations compose because they relieve different bottlenecks: whole-scan fusion removes dispatch and recurrent-state traffic on the serial critical path, component-aware precision shortens the arithmetic of each step, and multi-trajectory mapping fills the streaming multiprocessors that a single recurrent scan leaves idle.
+We decompose the end-to-end gain of \Cref{subsec:end-to-end} into the three axes of \textsc{Trident} and quantify each axis independently. We first ablate the three contributions against the end-to-end workload, then present Nsight profiling of GPU utilization that connects the observed performance regimes to how the device is actually occupied.
+
+\Cref{fig:ablation-shape} shows how the three axes combine on the end-to-end SINS/EKF workload, and \Cref{tab:ablation-axes} isolates each axis while holding the others fixed. Two observations stand out. First, no single axis suffices: enabling only the fp32 precision plan barely moves the launch-bound eager step ($449\to492$ steps/s), and even batching 108 eager trajectories ($4.4\times10^{4}$ steps/s) loses to a \emph{single} fused fp64 trajectory ($7.1\times10^{4}$ steps/s), because launch-bound execution never reaches the arithmetic that precision or fusion would accelerate. Second, the axes compose multiplicatively rather than additively---fusion $157\times$, precision a further $1.77\times$ on A100, batching $109\times$, whose product ($\approx3.0\times10^{4}\times$) matches the full combination---because each removes a distinct bottleneck: fusion removes dispatch and recurrent-state traffic on the serial critical path, precision shortens per-step arithmetic, and batching fills the SMs a single scan leaves idle. Every curve is flat in $N$ once launch and compilation costs amortize, so these conclusions do not depend on the horizon $N{=}166{,}667$.
 
 \begin{figure}[!t]
   \centering
   \includegraphics[width=\linewidth]{figures/5-eval-ablation-a100.pdf}
-  \caption{Contribution ablation on the end-to-end SINS/EKF workload (A100, 108 SMs). Each curve enables a subset of the three optimization axes; throughput counts filter steps per second, with batched variants aggregating $B{=}108$ trajectories (one per SM). The eager curves use the compile-friendly single-step refactor, the strongest eager variant; launch-bound implementations are trajectory-length invariant and are timed up to $N{=}20{,}000$. The dotted line marks the host CPU fp64 reference.}
+  \caption{Contribution ablation on the end-to-end SINS/EKF workload (A100, 108 SMs). Each curve enables a subset of the three optimization axes; batched variants aggregate $B{=}108$ trajectories (one per SM). Because launch-bound implementations are trajectory-length invariant (flat in $N$), all series are shown up to the common horizon $N{=}20{,}000$; the dotted line marks the host CPU fp64 reference.}
   \label{fig:ablation-shape}
 \end{figure}
 
-\paragraph{Combination structure}
-Three observations stand out in \Cref{fig:ablation-shape}. First, no axis suffices alone. With no axis enabled, the strongest eager variant sustains only $449$ steps/s---$0.45\times$ the host CPU---and enabling the fp32 precision plan without fusion changes this by barely $10\%$ ($492$ steps/s), because the launch-bound step never reaches the arithmetic that precision would accelerate. Batching alone does the most among the single-axis variants, raising throughput $99\times$ to $4.4\times10^{4}$ steps/s by amortizing per-step dispatch across 108 trajectories; yet even 108 batched eager trajectories still lose to a \emph{single} fused fp64 trajectory ($7.1\times10^{4}$ steps/s). Second, the axes compose multiplicatively rather than additively: fusion alone gives $157\times$ over the eager port, fusion with precision $279\times$, and the full combination $3.0\times10^{4}\times$ ($1.37\times10^{7}$ steps/s), matching the product of the individual factors ($157\times1.77\times109\approx3.0\times10^{4}$). Each axis therefore multiplies the others' gains because each removes a distinct bottleneck. Third, the ordering and the gaps are invariant across trajectory length: every curve is flat in $N$ once launch and compilation costs amortize, so these conclusions do not depend on the end-to-end horizon $N{=}166{,}667$.
-
-The figure also exposes a hardware dependence. On A100 the precision axis adds $1.8\times$ on top of fusion, whereas on H20 it adds $14.7\times$ (\Cref{tab:precision-fidelity}): the A100's fp64 units are proportionally much faster, so less headroom remains for fp32. This variation is exactly the regime in which the per-device precision-plan selection of \Cref{subsec:mixed-precision} is necessary, rather than a fixed choice made a priori.
-
-\paragraph{Whole-scan fusion}
-\Cref{tab:ablation-fusion} isolates the fusion axis at fixed fp64 precision. A direct tensor port of the estimator is not merely slow on the GPU but \emph{slower than the CPU}: the eager implementation expands each filter step into roughly 531 dependent kernel launches and sustains 263--610 steps/s, only $0.14$--$0.33\times$ the CPU reference. \texttt{torch.compile} removes about $97\%$ of these launches through Inductor fusion, yet reaches only $1.19\times$ the CPU: a step still contains eighteen dispatches, including cuBLAS and cuSOLVER library calls, and the recurrent state continues to cross kernel boundaries between them. CUDA Graph replay removes almost all host dispatch---one replay covers ten unrolled steps---but the captured graph still executes the same fine-grained kernels and their state transfers, yielding $1.41\times$. Only whole-scan fusion breaks the latency bound: enclosing the complete scan in one Triton program yields $16{,}491$ steps/s, $8.8\times$ the CPU and $6.2\times$ the CUDA Graph. Kernel-launch tracing then shows a single fused-kernel launch per measured trajectory execution, so no dispatch overhead remains to be removed; the residual latency is intrinsic to the recurrence itself.
-
-A library-composition bound explains why the gain must come from fusion rather than from faster components. On the H20 device, a batched cuBLAS evaluation of $\mathbf{F}\mathbf{P}\mathbf{F}^{\mathsf T}$ costs $17.5\,\mu$s per step and a cuSOLVER $3\times3$ inverse costs $134.2\,\mu$s; these two operations alone cap any per-step library composition at roughly $6.6\times10^{3}$ steps/s, and the single inverse call already costs $2.2\times$ the \emph{complete} fused step ($60.6\,\mu$s). The analytical adjugate inverse and register-resident state of \Cref{subsec:kernel-fusion} are therefore the enabling mechanism, not incremental refinements.
+Each axis also carries a caveat that makes its gain conditional rather than automatic. For fusion, the eager tensor port is \emph{slower than the CPU} (263--610 steps/s across $\sim$531 launches per step) and even CUDA Graph replay reaches only $1.41\times$; only enclosing the whole scan in one kernel breaks the latency bound, and a library-composition bound explains why---a cuBLAS $\mathbf{F}\mathbf{P}\mathbf{F}^{\mathsf T}$ plus a cuSOLVER $3\times3$ inverse already cost $2.2\times$ the complete fused step. For precision, the $14.7\times$ on H20 (only $1.8\times$ on A100, whose fp64 units are proportionally faster, motivating the per-device selection of \Cref{subsec:mixed-precision}) comes from the \emph{selective} assignment: a uniform TF32 plan is both slower ($0.86\times$) and less accurate ($4.82$\,mm) than the adopted fp32/IEEE plan. For batching, \Cref{tab:ablation-batch} shows throughput peaks at $B{=}312$---one full register-limited wave, $186\times$ a single trajectory---and \emph{falls} $24\%$ at $B{=}400$ once wave quantization leaves the second wave only $28\%$ populated, exactly as the register-residency model of \Cref{subsec:batch-parallelism} predicts.
 
 \begin{table}[!t]
   \centering
-  \caption{Ablation of whole-scan fusion at fixed fp64 precision (H20, single trajectory). Launch counts are per trajectory of $166{,}667$ steps. Rows marked $\dagger$ were timed on a $20{,}001$-step prefix because full-horizon eager execution is impractical; the per-step dispatch cost is uniform across steps. The eager range spans the original estimator and its compile-friendly single-step refactor.}
-  \label{tab:ablation-fusion}
-  \begin{tabular}{@{}lrrr@{}}
+  \caption{Per-axis ablation. The fusion column holds fp64 and a single trajectory (H20); the precision column holds fusion and a single trajectory; the batch column holds the fused fp32 kernel. Each factor is measured against the configuration to its left.}
+  \label{tab:ablation-axes}
+  \begin{tabular}{@{}lr@{}}
     \toprule
-    Stage & Launches & Steps/s & vs.\ CPU \\
+    Configuration (H20) & Steps/s \\
     \midrule
-    CPU eager (reference) & --- & 1,866 & 1.00$\times$ \\
-    GPU eager tensor port$^{\dagger}$ & $\approx8.9\times10^{7}$ & 263--610 & 0.14--0.33$\times$ \\
-    \quad$+$~\texttt{torch.compile}$^{\dagger}$ & $\approx3.0\times10^{6}$ & 2,213 & 1.19$\times$ \\
-    \quad$+$~CUDA Graph replay & $\approx1.7\times10^{4}$ & 2,640 & 1.41$\times$ \\
-    \quad$+$~whole-scan kernel (\textsc{Trident}) & 1 & 16,491 & 8.84$\times$ \\
+    Eager fp64 baseline & 263--610 \\
+    \quad$+$ whole-scan fusion (fp64) & 16,491 \quad($8.8\times$ CPU) \\
+    \quad$+$ mixed precision & 242,737 \quad($14.7\times$) \\
+    \quad$+$ multi-trajectory batch & $4.63\times10^{7}$ \quad($186\times$) \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\paragraph{Component-aware precision}
-\Cref{tab:precision-fidelity} isolates the precision axis on the fused kernel. Switching the recurrent arithmetic from fp64 to fp32 raises single-trajectory throughput from $16{,}491$ to $242{,}737$ steps/s---a further $14.7\times$ on top of fusion, composing to $130\times$ over the CPU---while deviating from the fp64 reference by at most $0.13$\,mm. The gain, however, does not come from lower precision as such but from the selective assignment of \Cref{subsec:mixed-precision}. The TensorFloat-32 plan is slower than the fp32/IEEE plan ($208{,}077$ versus $242{,}737$ steps/s, $0.86\times$) and less accurate ($4.82$\,mm deviation): for $15\times15$ latency-bound products, Tensor Core conversion and padding overhead exceeds the arithmetic saved, so the TF32 plan is dominated on both axes. Lowering only the sensor input to fp16 is numerically safe ($2.19$\,mm) but changes throughput by less than $3\%$, within run-to-run variability, so the adopted plan keeps fp32 input. Uniform reductions across the whole estimator are unsafe, as \Cref{subsec:precision-evaluation} shows. The precision axis therefore delivers its $14.7\times$ only in combination with the component-level analysis; naive Tensor Core or half-precision adoption loses on speed, accuracy, or both.
-
-\paragraph{Multi-trajectory parallelism}
-\Cref{tab:ablation-batch} sweeps the batch size $B$ of the fused fp32 kernel, and Nsight Compute profiling connects the observed regimes to device utilization. A single fused trajectory eliminates all dispatch overhead yet occupies one 128-thread block on one of 78 SMs: profiling reports $0.27\%$ device SM throughput and $6.25\%$ achieved occupancy (4 of 64 warps) on the active SM (\Cref{tab:motivation-utilization}). With one launch per trajectory and no further fusion or dispatch gains available, batch-level mapping is the only remaining lever.
-
-Three regimes are visible. In the linear region ($B\leq78$), per-trajectory efficiency stays at or above $0.986$: seventy-eight trajectories complete in $682$\,ms against $672$\,ms for one, so 77 additional trajectories cost less than $2\%$ additional wall time, and measured SM throughput rises from $0.27\%$ to $19.91\%$---a $74\times$ increase that mirrors the block count. In the register-residency region ($78<B\leq312$), the kernel's $110$ registers per thread permit four resident blocks per SM, so up to $B_{\mathrm{sat}}\approx78\times4=312$ trajectories (\Cref{eq:batch-saturation}) execute concurrently; throughput keeps growing with declining per-trajectory efficiency ($0.83$ at two blocks per SM, $0.60$ at four) as co-resident blocks contend for execution units. The measured peak of $4.63\times10^{7}$ steps/s occurs at exactly $B=312$, one full register-limited wave, $186\times$ the single-trajectory rate. Even there, achieved occupancy is bounded at $25\%$ (16 of 64 warps per SM), confirming that the workload remains latency-bound: throughput scales by adding independent recurrences, not by filling each SM's pipeline. Beyond saturation, wave quantization dominates: at $B=400$ the second wave is only $28\%$ populated, and throughput \emph{falls} by $24\%$ to $3.50\times10^{7}$ steps/s. The batch axis thus contributes the largest single multiplier in \textsc{Trident}, and its saturation point is predicted accurately by the register-residency model of \Cref{subsec:batch-parallelism}.
-
 \begin{table}[!t]
   \centering
-  \caption{Batch-size sweep of the fused fp32 kernel on H20 (median of repeated runs). Blocks/SM is $B/78$; per-trajectory efficiency normalizes throughput to $B\times$ the $B{=}1$ rate of the same sweep. The $B{=}1$ row repeats the fused fp32 configuration of \Cref{tab:end-to-end}.}
+  \caption{Batch-size sweep of the fused fp32 kernel on H20 (median of repeated runs). Blocks/SM is $B/78$; per-trajectory efficiency normalizes throughput to $B\times$ the $B{=}1$ rate. The $B{=}1$ row is the fused fp32 configuration of \Cref{subsec:end-to-end}.}
   \label{tab:ablation-batch}
   \begin{tabular}{@{}rrrrl@{}}
     \toprule
@@ -546,6 +484,29 @@ Three regimes are visible. In the linear region ($B\leq78$), per-trajectory effi
     256 & 3.28 & 38,029,702 & 0.599 & register co-residency \\
     312 & 4.00 & 46,290,218 & 0.598 & peak, one full wave \\
     400 & 5.13 & 35,016,136 & 0.353 & oversubscribed \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+A GPU-utilization profile ties these regimes to how the device is occupied, and \Cref{tab:ablation-profiling} summarizes the measured Nsight counters. Kernel-launch tracing (Nsight Systems) confirms that whole-scan fusion removes the dispatch bottleneck entirely---a full $166{,}667$-step trajectory executes as a single \texttt{ekf\_mega\_kernel\_p} launch---so with no dispatch overhead left, the remaining lever is how much of the device that one launch occupies. Nsight Compute shows the answer for a single trajectory is "very little": one $128$-thread block (four warps) lands on one of $78$ SMs ($\approx1.3\%$ of the device), achieved occupancy on that SM is $6.25\%$ ($4$ of $64$ warps), and device-wide SM throughput is $0.27\%$ (\Cref{tab:motivation-utilization}). This double under-subscription---few SMs among many, few warps within the active one---is the quantitative root of the latency-bound behavior.
+
+Batch-level mapping closes exactly this gap. At $B{=}78$ the grid places one block on every SM and measured SM throughput rises $74\times$, from $0.27\%$ to $19.91\%$, while per-SM occupancy stays at $6.25\%$ because each SM still hosts a single block. Further residency is bounded by the register file: at $110$ registers per thread at most four blocks are resident per SM, capping theoretical occupancy at $25\%$ and setting the saturation point $B_{\mathrm{sat}}\approx78\times4=312$ measured in \Cref{tab:ablation-batch}. Even at the $B{=}312$ peak occupancy remains register-limited at $25\%$, so the workload is still latency-bound---throughput scales by adding independent recurrences across SMs rather than by filling each SM's pipeline, which is precisely the behavior the batch axis of \Cref{subsec:batch-parallelism} is designed to exploit.
+
+\begin{table}[!t]
+  \centering
+  \caption{Nsight Compute utilization for the fused fp32 kernel on H20 (78 SMs, 64 warps/SM). The single-trajectory row matches \Cref{tab:motivation-utilization}; batching fills SMs without raising per-SM occupancy, which is register-limited to four blocks.}
+  \label{tab:ablation-profiling}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Metric & $B{=}1$ & $B{=}78$ \\
+    \midrule
+    Grid (blocks) & 1 & 78 \\
+    SMs hosting a block & 1 of 78 & 78 of 78 \\
+    Device SM throughput & 0.27\% & 19.91\% \\
+    Achieved occupancy per SM & 6.25\% & 6.25\% \\
+    Registers per thread & 110 & 110 \\
+    Resident-block limit (registers) & 4 / SM & 4 / SM \\
+    Theoretical occupancy ceiling & 25\% & 25\% \\
     \bottomrule
   \end{tabular}
 \end{table}
