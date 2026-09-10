@@ -1,24 +1,37 @@
 {
- "hardware": {
-  "gpu_name": "NVIDIA A100-SXM4-80GB",
-  "torch_version": "2.9.1+cu128",
-  "triton_version": "3.5.1"
- },
- "n_steps": 166667,
- "note": "cold = first full run in fresh TRITON_CACHE_DIR (JIT compile + exec); hot = second run, disk-cache hit; compile_s_est = cold - hot (data loading and kernel exec identical in both).",
- "fp64": {
-  "cold": 7.296,
-  "hot": 2.725,
-  "compile_s_est": 4.571
- },
- "fp32": {
-  "cold": 5.017,
-  "hot": 2.143,
-  "compile_s_est": 2.874
- },
- "tf32": {
-  "cold": 5.913,
-  "hot": 1.975,
-  "compile_s_est": 3.938
- }
+  "hardware": {
+    "gpu_name": "NVIDIA A100-SXM4-80GB",
+    "sm_count": 108,
+    "total_memory_gb": 85.2,
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "470.82.01",
+    "cuda_version": "12.8",
+    "torch_version": "2.9.1+cu128",
+    "triton_version": "3.5.1"
+  },
+  "n_steps": 166667,
+  "batch": 1,
+  "reps_warm": 3,
+  "note": "cold = first full run in a fresh TRITON_CACHE_DIR (JIT compile + exec); hot = second run, disk-cache hit; compile_s_est = cold - hot (data loading and kernel exec identical in both).",
+  "plans": {
+    "fp64": {
+      "cold": 7.036,
+      "hot": 2.66,
+      "compile_s_est": 4.376
+    },
+    "fp32": {
+      "cold": 4.91,
+      "hot": 1.982,
+      "compile_s_est": 2.928
+    },
+    "tf32": {
+      "cold": 5.677,
+      "hot": 2.059,
+      "compile_s_est": 3.618
+    }
+  },
+  "total_compile_s_est": 10.922
 }

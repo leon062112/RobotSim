@@ -511,6 +511,34 @@ Batch-level mapping closes exactly this gap. At $B{=}78$ the grid places one blo
   \end{tabular}
 \end{table}
 
+\subsection{Overhead Analysis}
+\label{subsec:overhead}
+
+Mixed precision in \textsc{Trident} is realized inside the fused kernel: input storage ($\mathit{DT}_{\mathrm{IO}}$), recurrent arithmetic ($\mathit{DT}$), and dot-product mode ($\mathit{IP}$) are assigned independently, and each combination is fixed at compile time as a branch-free specialization (\Cref{subsec:mixed-precision}). The dispatch count is unaffected---a trajectory still executes in one launch under any plan---but the number of kernels that must be compiled is not: the current implementation instantiates three plans (fp64, fp32, and TF32), each a separate binary. \Cref{tab:overhead-compile} prices what the protocol of \Cref{subsec:experimental-setup} defers by excluding compilation from all reported timings. A cold start---the first launch with an empty on-disk Triton cache---costs $4.4$\,s for fp64, $2.9$\,s for fp32, and $3.6$\,s for TF32, about $11$\,s for the three specializations together; the cache serves all later launches, so within one device and toolchain the cost does not recur.
+
+\paragraph{Per-device recalibration}
+The cost that does recur is calibration, because both the binaries and the \emph{outcome} of plan selection are device-specific. The acceleration of fp32 over fp64 is $1.8\times$ on the A100 but $14.7\times$ on the H20, and TF32 dot products buy about $3\%$ throughput at a measurable accuracy cost on the A100 while running \emph{slower} than IEEE on the H20 (\Cref{tab:ablation-axes} and \Cref{tab:precision-fidelity}); an archive of decisions made on one GPU therefore does not transfer to another. Recalibrating a new device requires recompiling the candidate kernels ($\approx11$\,s), screening each plan with a full-horizon accuracy probe ($1.4$--$2.4$\,s per run), and the fp64 CPU reference trajectory ($\approx163$\,s), which depends on the dataset rather than the device and can be cached and shared across machines. The device-attached part is under half a minute of GPU time.
+
+\paragraph{Amortization and scope}
+This overhead is one-time and amortizes with deployment scale. A single $166{,}667$-step fp32 trajectory executes in $1.4$\,s, so only one-shot, single-trajectory use is compile-dominated; the multi-trajectory simulation campaigns this workload targets amortize the sub-minute charge over thousands of runs and parameter sweeps. The remaining overheads are conditional rather than systematic---the register-resident state pays a step cost only beyond the $d{=}15$ design point, and block-per-trajectory mapping wastes a partial wave only for batches that are not multiples of $B_{\mathrm{sat}}$ (\Cref{subsec:ablation})---and neither accumulates with the number of deployments. Per-device selection therefore remains practical, which is the same conclusion \Cref{subsec:ablation} reaches from the accuracy side, restated here as a bounded deployment cost.
+
+\begin{table}[!t]
+  \centering
+  \caption{One-time cost of compile-time precision specialization, measured on the A100. Compilation is a cold start (first launch with an empty on-disk Triton cache) minus an identical warm rerun of the full $166{,}667$-step execution, which isolates JIT compilation; probes are one full-horizon run per candidate plan.}
+  \label{tab:overhead-compile}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Item & Cost & Paid \\
+    \midrule
+    Kernel compilation, fp64 / fp32 / TF32 & $4.4$ / $2.9$ / $3.6$\,s ($\approx11$\,s) & per device, per plan \\
+    Accuracy probe per candidate plan & $1.4$--$2.4$\,s per full run & per device \\
+    fp64 CPU reference trajectory & $\approx163$\,s & per dataset (cacheable) \\
+    \midrule
+    Device-attached subtotal & $<30$\,s & per new device or toolchain \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 \section{Related Work}
 \label{sec:related-work}
 
