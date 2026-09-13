@@ -522,11 +522,11 @@ The cost that does recur is calibration, because both the binaries and the \emph
 \paragraph{Amortization and scope}
 This overhead is one-time and amortizes with deployment scale. A single $166{,}667$-step fp32 trajectory executes in $1.4$\,s, so only one-shot, single-trajectory use is compile-dominated; the multi-trajectory simulation campaigns this workload targets amortize the sub-minute charge over thousands of runs and parameter sweeps. The remaining overheads are conditional rather than systematic---the register-resident state pays a step cost only beyond the $d{=}15$ design point, and block-per-trajectory mapping wastes a partial wave only for batches that are not multiples of $B_{\mathrm{sat}}$ (\Cref{subsec:ablation})---and neither accumulates with the number of deployments. Per-device selection therefore remains practical, which is the same conclusion \Cref{subsec:ablation} reaches from the accuracy side, restated here as a bounded deployment cost.
 
-\begin{table}[!t]
+\begin{table*}[!t]
   \centering
   \caption{One-time cost of compile-time precision specialization, measured on the A100. Compilation is a cold start (first launch with an empty on-disk Triton cache) minus an identical warm rerun of the full $166{,}667$-step execution, which isolates JIT compilation; probes are one full-horizon run per candidate plan.}
   \label{tab:overhead-compile}
-  \begin{tabular}{@{}lll@{}}
+  \begin{tabular}{@{}L{100pt}R{70pt}L{57pt}@{}}
     \toprule
     Item & Cost & Paid \\
     \midrule
@@ -537,7 +537,7 @@ This overhead is one-time and amortizes with deployment scale. A single $166{,}6
     Device-attached subtotal & $<30$\,s & per new device or toolchain \\
     \bottomrule
   \end{tabular}
-\end{table}
+\end{table*}
 
 \section{Related Work}
 \label{sec:related-work}
