@@ -67,16 +67,16 @@ def main():
 
     ax.axhline(cpu_fp64, color=MUTED, linestyle=':', linewidth=1.4, zorder=1)
     ax.text(2200, cpu_fp64 * 1.3, f'host CPU fp64 ({cpu_fp64:,.0f} steps/s)',
-            fontsize=8.5, color=MUTED)
+            fontsize=10.5, color=MUTED)
 
     # The two launch-bound curves sit within ~10% of each other and overlap;
     # call them out so the reader does not have to separate them by eye.
     none_end = combos['none'][-1]['throughput']
     prec_end = combos['precision_only'][-1]['throughput']
     ax.annotate(f'{none_end:,.0f}', xy=(max_n, none_end), xytext=(-30, -13),
-                textcoords='offset points', fontsize=8, color=MUTED)
+                textcoords='offset points', fontsize=10, color=MUTED)
     ax.annotate(f'{prec_end:,.0f}', xy=(max_n, prec_end), xytext=(-16, 8),
-                textcoords='offset points', fontsize=8, color=BLUE)
+                textcoords='offset points', fontsize=10, color=BLUE)
 
     ax.set_xscale('log')
     ax.set_yscale('log')
@@ -85,18 +85,21 @@ def main():
     ax.set_yticks([1e2, 1e3, 1e4, 1e5, 1e6, 1e7])
     ax.get_yaxis().set_major_formatter(
         plt.FuncFormatter(lambda v, _: f'$10^{{{int(np.log10(v))}}}$'))
-    ax.set_xlabel('Trajectory length $N$ (filter steps, log)', fontsize=10.5, color=INK)
-    ax.set_ylabel('Throughput (filter steps/s, log)', fontsize=10.5, color=INK)
+    ax.set_xlabel('Trajectory length $N$ (filter steps, log)', fontsize=13, color=INK)
+    ax.set_ylabel('Throughput (filter steps/s, log)', fontsize=13, color=INK)
     ax.grid(axis='y', which='major', linestyle='--', linewidth=0.7, color='#e1e0d9', zorder=0)
-    ax.tick_params(colors=MUTED, labelsize=8.5)
+    ax.tick_params(colors=MUTED, labelsize=11)
     for sp in ax.spines.values():
-        sp.set_color('#c3c2b7')
+        sp.set_color(INK)
 
-    leg = ax.legend(fontsize=8.5, loc='upper left', framealpha=0.95,
-                    edgecolor='#c3c2b7', labelcolor=INK)
-    leg.set_zorder(5)
+    # 共享图例：图上方，两列三行 6 项，无边框，字体加大。
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(handles, labels, frameon=False, loc='upper center',
+               bbox_to_anchor=(0.5, 0.99), ncol=2, fontsize=12,
+               handlelength=1.8, columnspacing=2.4, handletextpad=0.6)
 
-    fig.tight_layout()
+    # 显式边距（tight_layout 与 fig.legend 顶部图例不兼容）：顶部留图例行。
+    fig.subplots_adjust(left=0.115, right=0.99, bottom=0.115, top=0.85)
     for ext in ('png', 'pdf'):
         out = FIGURE_DIR / f'ablation_shape.{ext}'
         fig.savefig(out)

@@ -18,12 +18,14 @@ marker 形状作为 secondary encoding）。
 用法：python code/visualization/plot_shape_compare.py
 """
 import json
+import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIGURE_DIR = REPO_ROOT / 'data' / 'figures'
+PAPER_FIG_DIR = REPO_ROOT / 'paper' / 'latex' / 'figures'
 FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 
 # 代表性 (d, m) 配置：从左到右严格递增。
@@ -44,7 +46,7 @@ SERIES = [
     ('Trident (ours)',   GREEN,  'o', 2.4, 'triton'),
     ('PrefixScan',       VIOLET, 'v', 1.6, 'prefix'),
     ('torch eager',      BLUE,   's', 1.6, 'eager'),
-    ('torch.compile',    AQUA,   '^', 1.6, 'compile'),
+    ('torch compile',    AQUA,   '^', 1.6, 'compile'),
 ]
 
 Y_TICKS = [3e3, 1e4, 3e4, 1e5, 3e5]
@@ -77,7 +79,7 @@ def _style_axis(ax):
     ax.tick_params(colors=MUTED, labelsize=8)
     ax.tick_params(axis='x', colors=INK)
     for sp in ax.spines.values():
-        sp.set_color('#c3c2b7')
+        sp.set_color(INK)
 
 
 def main():
@@ -119,7 +121,10 @@ def main():
     fig.savefig(FIGURE_DIR / 'shape_compare.pdf', bbox_inches='tight')
     fig.savefig(FIGURE_DIR / 'shape_compare.png', bbox_inches='tight', dpi=200)
     plt.close(fig)
+    dst = PAPER_FIG_DIR / '5-eval-shape.pdf'
+    shutil.copy(FIGURE_DIR / 'shape_compare.pdf', dst)
     print(f'Saved: data/figures/shape_compare.pdf / .png  configs={configs}')
+    print(f'copied -> {dst}')
 
 
 if __name__ == '__main__':
