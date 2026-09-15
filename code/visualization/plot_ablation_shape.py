@@ -1,5 +1,15 @@
 """
-消融图: 贡献组合 x 轨迹长度 N (端到端 SINS/EKF 工作负载, A100)。
+消融图: 单轴隔离 + 完整组合, 端到端 SINS/EKF 工作负载, A100。
+
+五条线 (吞吐 vs 轨迹长度 N, 双 log):
+  baseline       v1 eager fp64, B=1            —— 三个轴都不加 (FP64 GPU eager baseline)
+  fusion         v3 fused fp64, B=1            —— 只加 fusion
+  mix-precision  v1 eager fp32, B=1            —— 只加 mix-precision (component-aware fp32 计划)
+  batch          v1 eager fp64, B=108          —— 只加 batch trajectory (每 SM 一条)
+  Trident        v5 fused fp32, B=108          —— 三个全加
+
+launch-bound 的 eager 变体吞吐与 N 无关 (平坦), 只测小 N; 为保持各线等长,
+所有线统一截断到公共 horizon N=20,000。
 
 数据: data/results/a100_ablation_shape.json (benchmark_ablation_shape.py)
 输出: data/figures/ablation_shape.{png,pdf} -> paper/latex/figures/5-eval-ablation-a100.pdf
@@ -25,27 +35,24 @@ BLUE, AQUA, YELLOW, GREEN = '#2a78d6', '#1baf7a', '#eda100', '#008300'
 INK, MUTED = '#0b0b0b', '#898781'
 
 # (json key, label, color, marker, linestyle, linewidth, zorder)
-# The two bottom curves overlap on a log axis (eager fp64 ~449 vs eager fp32
-# ~492 steps/s is a ~10% band), so they are given strongly separated visual
-# channels: a muted dashed line with downward triangles vs. a solid blue line
-# with filled circles.
+# baseline 与 mix-precision 两条线在对数轴上只差 ~10%, 用强烈区分的视觉通道
+# (灰虚线+倒三角 vs 蓝实线+圆点) 并辅以数值标注。
 SERIES = [
-    ('none',             'baseline (eager fp64)',           MUTED,  'v', (0, (4, 3)), 1.2, 2),
-    ('precision_only',   '+ precision (eager fp32)',        BLUE,   'o', '-',  1.5, 4),
-    ('batch_only',       '+ batch (eager fp64, $B{=}108$)', YELLOW, 'D', '-',  1.6, 3),
-    ('fusion_only',      '+ fusion (fused fp64)',           AQUA,   '^', '-',  1.8, 3),
-    ('fusion_precision', '+ fusion + precision (fused fp32)', GREEN, 's', '--', 1.6, 3),
-    ('all',              'Trident (all three, $B{=}108$)', GREEN, 'o', '-', 2.6, 4),
+    ('none',             'baseline',         MUTED,  'v', (0, (4, 3)), 1.2, 2),
+    ('fusion_only',      'fusion',           AQUA,   '^', '-',  1.8, 3),
+    ('precision_only',   'mix-precision',    BLUE,   'o', '-',  1.5, 4),
+    ('batch_only',       'batch trajectory', YELLOW, 'D', '-',  1.6, 3),
+    ('all',              'Trident',          GREEN,  'o', '-',  2.6, 4),
 ]
 
 
 def main():
     d = json.load(open(REPO_ROOT / 'data/results/a100_ablation_shape.json'))
     combos = d['combos']
-    B = d['batch']
-
-    cpu = json.load(open(REPO_ROOT / 'data/results/a100_benchmark_summary.json'))
-    cpu_fp64 = cpu['v0_cpu']['throughput_steps_per_s']
+    missing = [k for k, *_ in SERIES if k not in combos]
+    if missing:
+        raise SystemExit(f'missing combos in json: {missing} — '
+                         f'run benchmark_ablation_shape.py {" ".join(missing)}')
 
     # Launch-bound variants are per-step invariant in N (they are flat), so
     # they were timed only up to 20,000 steps; truncating the flat fused
@@ -60,23 +67,17 @@ def main():
         pts = [p for p in combos[key] if p['n'] <= max_n]
         x = [p['n'] for p in pts]
         y = [p['throughput'] for p in pts]
-        mfc = 'white' if key == 'fusion_precision' else color
         ax.plot(x, y, linestyle=ls, marker=mkr, color=color, linewidth=lw,
                 markersize=6, markeredgecolor=color, markeredgewidth=1.0,
-                markerfacecolor=mfc, label=label, zorder=z)
+                markerfacecolor=color, label=label, zorder=z)
 
-    ax.axhline(cpu_fp64, color=MUTED, linestyle=':', linewidth=1.4, zorder=1)
-    ax.text(2200, cpu_fp64 * 1.3, f'host CPU fp64 ({cpu_fp64:,.0f} steps/s)',
-            fontsize=10.5, color=MUTED)
-
-    # The two launch-bound curves sit within ~10% of each other and overlap;
-    # call them out so the reader does not have to separate them by eye.
-    none_end = combos['none'][-1]['throughput']
-    prec_end = combos['precision_only'][-1]['throughput']
-    ax.annotate(f'{none_end:,.0f}', xy=(max_n, none_end), xytext=(-30, -13),
-                textcoords='offset points', fontsize=10, color=MUTED)
-    ax.annotate(f'{prec_end:,.0f}', xy=(max_n, prec_end), xytext=(-16, 8),
-                textcoords='offset points', fontsize=10, color=BLUE)
+    # 底部两条 launch-bound 曲线相差 ~10%, 在对数轴上几乎重叠, 标注数值区分
+    end = {k: [p for p in combos[k] if p['n'] <= max_n][-1] for k, *_ in SERIES}
+    for key, (dx, dy) in [('none', (-30, -13)), ('precision_only', (-16, 8))]:
+        p = end[key]
+        ax.annotate(f"{p['throughput']:,.0f}", xy=(p['n'], p['throughput']),
+                    xytext=(dx, dy), textcoords='offset points',
+                    fontsize=10, color=MUTED)
 
     ax.set_xscale('log')
     ax.set_yscale('log')
@@ -92,13 +93,13 @@ def main():
     for sp in ax.spines.values():
         sp.set_color(INK)
 
-    # 共享图例：图上方，两列三行 6 项，无边框，字体加大。
+    # 共享图例: 图上方, 三列两行 5 项, 无边框, 字体加大
     handles, labels = ax.get_legend_handles_labels()
     fig.legend(handles, labels, frameon=False, loc='upper center',
-               bbox_to_anchor=(0.5, 0.99), ncol=2, fontsize=12,
-               handlelength=1.8, columnspacing=2.4, handletextpad=0.6)
+               bbox_to_anchor=(0.5, 0.99), ncol=3, fontsize=12,
+               handlelength=1.6, columnspacing=1.8, handletextpad=0.6)
 
-    # 显式边距（tight_layout 与 fig.legend 顶部图例不兼容）：顶部留图例行。
+    # 显式边距 (tight_layout 与 fig.legend 顶部图例不兼容): 顶部留图例行
     fig.subplots_adjust(left=0.115, right=0.99, bottom=0.115, top=0.85)
     for ext in ('png', 'pdf'):
         out = FIGURE_DIR / f'ablation_shape.{ext}'

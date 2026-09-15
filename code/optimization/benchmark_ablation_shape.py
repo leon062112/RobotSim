@@ -1,17 +1,22 @@
 """
-消融图数据: 贡献组合 x 轨迹长度 N (端到端 SINS/EKF 工作负载, A100)。
+消融图数据: 全因子 2^3 组合 (fusion x precision x batch), 端到端 SINS/EKF 工作负载, A100。
 
-六条线 (吞吐 = filter steps/s, log):
-  none              v1 eager fp64            —— 三个贡献点都不加
-  precision_only    v1 eager fp32            —— 只加精度 (component-aware 所选 fp32 计划)
-  batch_only        v1 eager fp64, B=108 批量 —— 只加 batch (不融合, 逐步 launch)
+八条线 (吞吐 = filter steps/s):
+  none              v1 eager fp64, B=1           —— 三个贡献点都不加 (baseline)
+  precision_only    v1 eager fp32, B=1           —— 只加精度 (component-aware 所选 fp32 计划)
+  batch_only        v1 eager fp64, B=108 批量    —— 只加 batch (不融合, 逐步 launch)
+  precision_batch   v1 eager fp32, B=108 批量    —— 精度 + batch (不融合)
   fusion_only       v3 Triton fused fp64, B=1
   fusion_precision  v4 Triton fused fp32, B=1
-  all               v5 Triton fused fp32, B=108 —— 三个全加 (TRIDENT)
+  fusion_batch      v5 Triton fused fp64, B=108
+  all               v5 Triton fused fp32, B=108  —— 三个全加 (TRIDENT)
 
 launch-bound 的 eager 变体吞吐与 N 无关, 只测小 N; fused 变体测到全程 166,667。
 
-用法: python code/optimization/benchmark_ablation_shape.py
+用法:
+  python code/optimization/benchmark_ablation_shape.py            # 全部 8 组合 (覆盖 JSON)
+  python code/optimization/benchmark_ablation_shape.py fusion_batch precision_batch
+                                                      # 只跑指定组合, 结果合并进已有 JSON
 """
 import os
 import sys
@@ -213,28 +218,16 @@ def med_rep(fn, reps):
     return float(np.median(vals))
 
 
-def main():
-    results = {
-        'hardware': {'gpu': torch.cuda.get_device_name(0),
-                     'sm': torch.cuda.get_device_properties(0).multi_processor_count,
-                     'torch': torch.__version__, 'triton': __import__('triton').__version__},
-        'batch': BATCH,
-        'combos': {},
-    }
-
-    print('== validate batched eager ==')
-    results['validation'] = {'batched_eager_vs_v1_max_diff_m': validate_batched_eager()}
-
-    def save():
-        json.dump(results, open(OUT, 'w'), indent=2, ensure_ascii=False)
-        print(f'  saved -> {OUT}')
-
-    combos = [
+def all_combos():
+    return [
         # fused 变体先跑 (快), 含 JIT warmup
         ('fusion_only', N_FAST, REPS_FAST,
          lambda N: run_ekf_v3(n_steps=N, verbose=False), dict(n_steps=166667)),
         ('fusion_precision', N_FAST, REPS_FAST,
          lambda N: run_ekf_v4(n_steps=N, precision='fp32', verbose=False), dict(n_steps=166667)),
+        ('fusion_batch', N_FAST, REPS_FAST,
+         lambda N: run_ekf_v5(n_steps=N, batch=BATCH, precision='fp64', verbose=False),
+         dict(n_steps=2000)),
         ('all', N_FAST, REPS_FAST,
          lambda N: run_ekf_v5(n_steps=N, batch=BATCH, precision='fp32', verbose=False),
          dict(n_steps=2000)),
@@ -245,12 +238,45 @@ def main():
          lambda N: run_ekf_v1(device='cuda', n_steps=N, precision='fp32', verbose=False), None),
         ('batch_only', N_SLOW, REPS_SLOW,
          lambda N: run_eager_batched(N, batch=BATCH), None),
+        ('precision_batch', N_SLOW, REPS_SLOW,
+         lambda N: run_eager_batched(N, batch=BATCH, precision='fp32'), None),
     ]
+
+
+def main():
+    # 可选位置参数: 只跑指定组合并合并进已有 JSON (默认全部重跑, 覆盖 JSON)
+    selected = sys.argv[1:]
+    combos = all_combos()
+    names = {c[0] for c in combos}
+    unknown = set(selected) - names
+    if unknown:
+        raise SystemExit(f'unknown combo(s): {sorted(unknown)}; choices: {sorted(names)}')
+    if selected:
+        combos = [c for c in combos if c[0] in selected]
+
+    if selected and os.path.exists(OUT):
+        results = json.load(open(OUT))
+        results['combos'] = results.get('combos', {})
+    else:
+        results = {
+            'hardware': {'gpu': torch.cuda.get_device_name(0),
+                         'sm': torch.cuda.get_device_properties(0).multi_processor_count,
+                         'torch': torch.__version__, 'triton': __import__('triton').__version__},
+            'batch': BATCH,
+            'combos': {},
+        }
+
+    print('== validate batched eager ==')
+    results['validation'] = {'batched_eager_vs_v1_max_diff_m': validate_batched_eager()}
+
+    def save():
+        json.dump(results, open(OUT, 'w'), indent=2, ensure_ascii=False)
+        print(f'  saved -> {OUT}')
 
     for name, ngrid, reps, fn, warmkw in combos:
         if warmkw is not None:
             print(f'== {name}: JIT warmup (excluded from timing) ==')
-            fn(166667 if name != 'all' else 2000)
+            fn(166667 if name in ('fusion_only', 'fusion_precision') else 2000)
         pts = []
         for N in ngrid:
             t0 = time.time()
