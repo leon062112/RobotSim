@@ -1,0 +1,104 @@
+\section{Background}
+\label{sec:background}
+
+\subsection{Downhole Traction Robot Positioning}
+\label{subsec:positioning-background}
+
+Downhole traction robots provide the active conveyance on which intervention in highly deviated and horizontal wells depends. The deployment configuration in \Cref{fig:downhole-tractor} shows the tractor moving with the toolstring while its drive elements maintain contact with the well wall. This study considers operation inside a cased horizontal well, where the available space is narrow and absolute positioning signals are generally unavailable. High temperature and pressure, corrosion, deposits, local deformation, and obstructions can change the contact conditions between the robot and the casing. These effects can introduce wheel slip and short-duration disturbances while the robot performs intervention, logging, perforation, or other downhole operations. A positioning system must therefore maintain a local state estimate over a long constrained motion and remain useful when an individual measurement becomes unreliable.
+
+The simulated platform uses a three-axis inertial measurement unit (IMU) and two wheel odometers. Gyroscope and accelerometer measurements support high-rate propagation of attitude, velocity, and position, but their biases cause the propagated solution to drift over time. The odometers provide an independent estimate of traveled distance, which the estimator folds into a single displacement measurement that corrects the propagated drift, while disagreement between the two odometers or between odometry and inertial propagation provides a signal for detecting local disturbances. The fusion system uses these complementary measurements in a local navigation frame whose origin and initial attitude are set during initialization.
+
+The casing geometry supplies additional information about feasible robot motion. During nominal traction, displacement is dominated by the direction of the well axis, whereas sustained lateral or radial velocity is inconsistent with the confined workspace. These motion constraints improve local observability when absolute position is unavailable. They cannot, however, be treated as uniformly reliable: wheel slip, asymmetric traction, and obstacle contact can produce transient measurements that violate the nominal motion pattern. The estimator must therefore combine continuous inertial propagation with measurement selection, using the available odometry information without allowing a short-lived contact disturbance to corrupt the full trajectory.
+
+\subsection{SINS/EKF Fusion Model}
+\label{subsec:ekf-model}
+
+The simulation follows a SINS with an error-state extended Kalman filter. At sample $k$, the SINS first updates the quaternion attitude from the angular-rate measurement, converts the measured specific force from the body frame to the navigation frame, subtracts gravity, and integrates velocity and position. Quaternion normalization is applied after each update to keep the attitude representation bounded.
+
+The SINS state is maintained as a nominal navigation solution, while the EKF represents only small deviations from that solution. This error-state formulation separates the nonlinear integration of attitude and motion from the locally linear uncertainty update. It also supports closed-loop correction: after the EKF estimates the navigation errors, the nominal position, velocity, and attitude are corrected and the corresponding error coordinates are reset. Sensor biases remain part of the estimated state because even small bias errors can accumulate during a long period without an external position reference.
+
+The EKF estimates the error of the nominal SINS state. Its 15-dimensional error vector is
+\begin{equation}
+  \mathbf{x}_k =
+  [\delta\mathbf{p}_k^{\mathsf T},
+   \delta\mathbf{v}_k^{\mathsf T},
+   \boldsymbol{\phi}_k^{\mathsf T},
+   \boldsymbol{\varepsilon}_k^{\mathsf T},
+   \boldsymbol{\nabla}_k^{\mathsf T}]^{\mathsf T}
+  \in \mathbb{R}^{15},
+  \label{eq:error-state}
+\end{equation}
+where the five three-dimensional components represent position error, velocity error, attitude error, gyroscope bias, and accelerometer bias, respectively.
+
+The linearized transition matrix is constructed from the current attitude, specific force, angular rate, and sampling interval. The covariance and error state are then propagated and corrected through the standard EKF prediction and measurement update:
+\begin{align}
+  \mathbf{x}_{k}^{-} &= \mathbf{F}_k\mathbf{x}_{k-1}, \\
+  \mathbf{P}_{k}^{-} &= \mathbf{F}_k\mathbf{P}_{k-1}\mathbf{F}_k^{\mathsf T}+\mathbf{Q}_k, \\
+  \mathbf{K}_k &= \mathbf{P}_{k}^{-}\mathbf{H}_k^{\mathsf T}
+  (\mathbf{H}_k\mathbf{P}_{k}^{-}\mathbf{H}_k^{\mathsf T}+\mathbf{R}_k)^{-1}, \\
+  \mathbf{x}_k &= \mathbf{x}_{k}^{-}+\mathbf{K}_k
+  (\mathbf{z}_k-\mathbf{H}_k\mathbf{x}_{k}^{-}), \\
+  \mathbf{P}_k &= (\mathbf{I}-\mathbf{K}_k\mathbf{H}_k)\mathbf{P}_{k}^{-}.
+  \label{eq:ekf-update}
+\end{align}
+
+Here, $\mathbf{F}_k$ is the linearized state-transition matrix, $\mathbf{P}_k$ is the error covariance, and $\mathbf{Q}_k$ models process uncertainty. The observation matrix $\mathbf{H}_k$ maps the error state into the currently available measurement space, while $\mathbf{R}_k$ represents measurement uncertainty. The matrix inverted in the gain calculation is the innovation covariance. Although its dimension is small in this application, its value changes with the propagated covariance and the accepted measurement set at every sample.
+
+When the consistency test accepts both wheel-odometer measurements, the measurement model combines the odometry displacement with the lateral and radial velocity constraints. If an odometer reading or a velocity constraint is judged unreliable, the update uses only the remaining reliable components. Because the corrected errors are fed back into the nominal state at every sample, each update depends on the state and covariance produced at the previous sample.
+
+\subsection{Computational Characteristics}
+\label{subsec:workload-characteristics}
+
+The overall computation is summarized in \Cref{fig:computational-flow}. The resulting workload is a long sequential scan of sensor samples. Each step combines quaternion and vector operations with covariance propagation, a small innovation calculation, and several products involving matrices whose logical dimensions are no larger than $15\times15$. The arithmetic intensity of an individual step is consequently modest, while the recurrent state and covariance must remain available for the next step. Temporal parallelism within one trajectory is therefore limited by the estimator semantics.
+
+\begin{figure}[!t]
+  \centering
+  \begin{tikzpicture}[
+      node distance=2.7mm,
+      font=\scriptsize,
+      flow/.style={draw=blue!65!black, rounded corners=1.5pt,
+        fill=blue!5, align=center, minimum height=6.5mm,
+        text width=5.6cm, inner sep=2.2pt},
+      update/.style={flow, draw=orange!80!black, fill=orange!8},
+      decision/.style={diamond, draw=blue!65!black, fill=blue!5,
+        align=center, aspect=2.7, inner sep=1.2pt},
+      note/.style={draw=black!55, dashed, rounded corners=1.5pt,
+        fill=black!2, align=center, minimum height=6mm,
+        text width=5.6cm, inner sep=2pt},
+      arrow/.style={-{Latex[length=1.7mm]}, semithick, draw=black!70}
+    ]
+    \node[flow] (init) {Initialize nominal state $\{\mathbf{p}_0,\mathbf{v}_0,\mathbf{q}_0\}$\\and EKF state $\{\mathbf{x}_0,\mathbf{P}_0\}$};
+    \node[flow, below=of init] (load) {Load sample $k$: gyroscope, accelerometer,\\and two wheel-odometer measurements};
+    \node[flow, below=of load] (sins) {SINS propagation: update attitude, transform\\specific force, and integrate velocity and position};
+    \node[flow, below=of sins] (select) {Odometer consistency test and measurement selection;\\construct $\mathbf{F}_k,\mathbf{Q}_k,\mathbf{H}_k,\mathbf{R}_k$};
+    \node[update, below=of select] (predict) {EKF prediction: propagate $\mathbf{x}_k^{-}$ and $\mathbf{P}_k^{-}$};
+    \node[update, below=of predict] (correct) {Innovation and Kalman gain; update $\mathbf{x}_k,\mathbf{P}_k$};
+    \node[update, below=of correct] (feedback) {Correct nominal position, velocity, and attitude;\\reset the corresponding error coordinates};
+    \node[flow, below=of feedback] (store) {Store the requested trajectory output at sample $k$};
+    \node[decision, below=4.0mm of store] (next) {$k<N$?};
+    \node[note, below=4.0mm of next] (batch) {Repeat the same sequential scan independently for\\trajectories $b=1,\ldots,B$ (batch-level parallelism)};
+
+    \draw[arrow] (init) -- (load);
+    \draw[arrow] (load) -- (sins);
+    \draw[arrow] (sins) -- (select);
+    \draw[arrow] (select) -- (predict);
+    \draw[arrow] (predict) -- (correct);
+    \draw[arrow] (correct) -- (feedback);
+    \draw[arrow] (feedback) -- (store);
+    \draw[arrow] (store) -- (next);
+    \draw[arrow] (next) -- node[right, font=\scriptsize] {no} (batch);
+    \coordinate (returntop) at ([xshift=4.5mm]load.east);
+    \coordinate (returnbottom) at (next.east -| returntop);
+    \draw[arrow] (next.east) -- node[above, font=\scriptsize] {yes}
+      (returnbottom) |- (load.east);
+
+    \node (scanbox) [draw=black!45, dashed, rounded corners=2pt,
+      fit=(load)(next), inner xsep=3.5mm, inner ysep=2.0mm] {};
+  \end{tikzpicture}
+  \caption{Overall computational flow of the SINS/EKF positioning simulation. Operations within one trajectory follow a loop-carried dependency, whereas different trajectories have independent recurrent states and can be evaluated in parallel.}
+  \label{fig:computational-flow}
+\end{figure}
+
+The covariance alone contains 225 logical elements, yet this state is still too small to provide the spatial parallelism of a large dense matrix operation. Moreover, the matrices used at a given sample are assembled from the current navigation state and measurement-validity decision rather than reused unchanged across the sequence. The workload therefore alternates small matrix products with quaternion normalization, coordinate transforms, scalar tests, and feedback operations. Its defining feature is not the cost of any individual operator, but the repeated execution of this heterogeneous operator chain under a loop-carried dependency.
+
+The simulation nevertheless exposes a second form of parallelism. Trajectories generated with different noise realizations, obstacle configurations, or filter parameters do not share state and can be evaluated independently. Increasing the trajectory length adds sequential work, whereas increasing the number of trajectories adds independent work. The workload thus combines a sequential dependency along each trajectory with batch-level independence across trajectories. This combination defines the execution target for the optimization methods developed in the remaining sections of the paper. For fixed-shape kernel implementations, the logical filter matrices may be stored in padded $16\times16$ tiles without changing the 15-state model.
